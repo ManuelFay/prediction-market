@@ -1,8 +1,6 @@
-from __future__ import annotations
-
 import enum
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from sqlmodel import SQLModel, Field, Relationship
 
@@ -20,9 +18,9 @@ class User(SQLModel, table=True):
     name: str
     balance: float = 50.0
 
-    markets: list["Market"] = Relationship(back_populates="creator")
-    bets: list["Bet"] = Relationship(back_populates="user")
-    transactions: list["LedgerEntry"] = Relationship(back_populates="user")
+    markets: List["Market"] = Relationship(back_populates="creator")
+    bets: List["Bet"] = Relationship(back_populates="user")
+    transactions: List["LedgerEntry"] = Relationship(back_populates="user")
 
 
 class Market(SQLModel, table=True):
@@ -43,9 +41,9 @@ class Market(SQLModel, table=True):
     creator_id: int = Field(foreign_key="user.id")
     last_bet_at: Optional[datetime] = None
 
-    creator: User = Relationship(back_populates="markets")
-    bets: list["Bet"] = Relationship(back_populates="market")
-    complaints: list["Complaint"] = Relationship(back_populates="market")
+    creator: "User" = Relationship(back_populates="markets")
+    bets: List["Bet"] = Relationship(back_populates="market")
+    complaints: List["Complaint"] = Relationship(back_populates="market")
 
 
 class Bet(SQLModel, table=True):
@@ -58,8 +56,8 @@ class Bet(SQLModel, table=True):
     placed_at: datetime = Field(default_factory=datetime.utcnow)
     implied_odds: float
 
-    user: User = Relationship(back_populates="bets")
-    market: Market = Relationship(back_populates="bets")
+    user: "User" = Relationship(back_populates="bets")
+    market: "Market" = Relationship(back_populates="bets")
 
 
 class LedgerType(str, enum.Enum):
@@ -79,7 +77,7 @@ class LedgerEntry(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     note: Optional[str] = None
 
-    user: User = Relationship(back_populates="transactions")
+    user: "User" = Relationship(back_populates="transactions")
 
 
 class Complaint(SQLModel, table=True):
@@ -89,4 +87,4 @@ class Complaint(SQLModel, table=True):
     reason: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    market: Market = Relationship(back_populates="complaints")
+    market: "Market" = Relationship(back_populates="complaints")
