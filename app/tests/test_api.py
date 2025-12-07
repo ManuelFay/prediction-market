@@ -1,4 +1,3 @@
-from datetime import timedelta
 import random
 import sys
 from pathlib import Path
@@ -12,7 +11,6 @@ from sqlmodel import SQLModel, Session, create_engine
 
 from app import amm
 from app.main import app, get_session
-from app.models import Market
 
 
 @pytest.fixture()
@@ -57,6 +55,21 @@ def create_market(client: TestClient, creator_id: int) -> dict:
     return response.json()
 
 
+def create_market_with_prob(client: TestClient, creator_id: int, prob_yes: float) -> dict:
+    payload = {
+        "question": "Probability guard test?",
+        "description": "",
+        "yes_meaning": "Yes",
+        "no_meaning": "No",
+        "resolution_source": "",
+        "initial_prob_yes": prob_yes,
+        "liquidity_b": 5.0,
+    }
+    response = client.post(f"/markets?user_id={creator_id}", json=payload)
+    assert response.status_code == 201
+    return response.json()
+
+
 def test_market_detail_includes_odds_history_and_volume(client: TestClient) -> None:
     user = create_user(client)
     market = create_market(client, user["id"])
@@ -77,7 +90,7 @@ def test_market_detail_includes_odds_history_and_volume(client: TestClient) -> N
     assert market_detail["odds_history"][-1]["user_id"] == user["id"]
 
 
-def test_bet_rate_limit_enforced(client: TestClient) -> None:
+def test_multiple_bets_allowed_without_delay(client: TestClient) -> None:
     user = create_user(client)
     market = create_market(client, user["id"])
 
@@ -89,7 +102,33 @@ def test_bet_rate_limit_enforced(client: TestClient) -> None:
     second_bet = client.post(
         f"/markets/{market['id']}/bet?user_id={user['id']}", json={"side": "NO"}
     )
-    assert second_bet.status_code == 429
+    assert second_bet.status_code == 201
+
+
+def test_probability_guards_block_extreme_sides(client: TestClient) -> None:
+    user = create_user(client)
+    high_prob_market = create_market_with_prob(client, user["id"], 0.96)
+    low_prob_market = create_market_with_prob(client, user["id"], 0.04)
+
+    yes_blocked = client.post(
+        f"/markets/{high_prob_market['id']}/bet?user_id={user['id']}", json={"side": "YES"}
+    )
+    assert yes_blocked.status_code == 400
+
+    no_allowed = client.post(
+        f"/markets/{high_prob_market['id']}/bet?user_id={user['id']}", json={"side": "NO"}
+    )
+    assert no_allowed.status_code == 201
+
+    no_blocked = client.post(
+        f"/markets/{low_prob_market['id']}/bet?user_id={user['id']}", json={"side": "NO"}
+    )
+    assert no_blocked.status_code == 400
+
+    yes_allowed = client.post(
+        f"/markets/{low_prob_market['id']}/bet?user_id={user['id']}", json={"side": "YES"}
+    )
+    assert yes_allowed.status_code == 201
 
 
 def test_resolve_market_pays_winners(client: TestClient) -> None:
@@ -107,16 +146,6 @@ def test_resolve_market_pays_winners(client: TestClient) -> None:
     bet_no_resp = client.post(
         f"/markets/{market['id']}/bet?user_id={no_bettor['id']}", json={"side": "NO"}
     )
-    if bet_no_resp.status_code == 429:
-        with Session(client.app.state.test_engine) as session:
-            market_row = session.get(Market, market["id"])
-            market_row.last_bet_at = market_row.last_bet_at - timedelta(seconds=10)
-            session.add(market_row)
-            session.commit()
-        bet_no_resp = client.post(
-            f"/markets/{market['id']}/bet?user_id={no_bettor['id']}", json={"side": "NO"}
-        )
-
     assert bet_no_resp.status_code == 201
 
     resolve_resp = client.post(
@@ -154,14 +183,7 @@ def test_random_bets_zero_sum_and_payout_breakdown(client: TestClient) -> None:
     market = create_market(client, creator["id"])
 
     def place_or_wait(user_id: int, side: str) -> None:
-        resp = client.post(f"/markets/{market['id']}/bet?user_id={user_id}", json={"side": side})
-        if resp.status_code == 429:
-            with Session(client.app.state.test_engine) as session:
-                market_row = session.get(Market, market["id"])
-                market_row.last_bet_at = market_row.last_bet_at - timedelta(seconds=10)
-                session.add(market_row)
-                session.commit()
-            client.post(f"/markets/{market['id']}/bet?user_id={user_id}", json={"side": side})
+        client.post(f"/markets/{market['id']}/bet?user_id={user_id}", json={"side": side})
 
     bettors = [u["id"] for u in users]
     for _ in range(20):

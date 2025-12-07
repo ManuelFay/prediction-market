@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import List
 
@@ -243,13 +243,15 @@ def place_bet(market_id: int, payload: BetCreate, user_id: int, session: Session
     if user.balance < 1:
         raise HTTPException(status_code=400, detail="Insufficient balance")
 
-    # Rate limiting per market
-    if market.last_bet_at and datetime.utcnow() - market.last_bet_at < timedelta(seconds=5):
-        raise HTTPException(status_code=429, detail="Betting too quickly on this market")
-
     side = payload.side.upper()
     if side not in {"YES", "NO"}:
         raise HTTPException(status_code=400, detail="Side must be YES or NO")
+
+    price_yes = amm.price_yes(market.q_yes, market.q_no, market.liquidity_b)
+    if side == "YES" and price_yes > 0.95:
+        raise HTTPException(status_code=400, detail="YES betting disabled above 95% probability")
+    if side == "NO" and price_yes < 0.05:
+        raise HTTPException(status_code=400, detail="NO betting disabled below 5% probability")
 
     new_q_yes, new_q_no = amm.shares_for_cost(1.0, side, market.q_yes, market.q_no, market.liquidity_b)
     delta_yes = new_q_yes - market.q_yes
@@ -292,6 +294,8 @@ def resolve_market(market_id: int, payload: ResolutionRequest, session: Session 
     market = session.get(Market, market_id)
     if not market:
         raise HTTPException(status_code=404, detail="Market not found")
+    if market.status in {MarketStatus.RESOLVED, MarketStatus.INVALID}:
+        raise HTTPException(status_code=400, detail="Market already resolved")
     outcome = payload.outcome.upper()
     if outcome not in {"YES", "NO", "INVALID"}:
         raise HTTPException(status_code=400, detail="Invalid outcome")
