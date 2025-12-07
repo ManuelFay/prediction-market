@@ -49,9 +49,9 @@ docs.
 1. Install the Fly CLI and log in: `flyctl auth login`.
 2. Ensure your app name matches the `app` value in `fly.toml` (default:
    `prediction-market`).
-3. Create a persistent volume for SQLite (size and region can be adjusted):
+3. Create a persistent volume for SQLite (size can be adjusted, region set to `cdg`):
    ```bash
-   fly volumes create data --size 1 --app prediction-market --region iad
+   fly volumes create data --size 1 --app prediction-market --region cdg
    ```
 4. Deploy using the bundled Dockerfile (this repository already includes
    `fly.toml`, so you do **not** need to run `fly launch`):
