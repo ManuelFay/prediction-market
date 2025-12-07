@@ -70,6 +70,10 @@ class MarketRead(BaseModel):
     last_bet_at: Optional[datetime]
     yes_preview: BetPreview
     no_preview: BetPreview
+    total_pot: float
+    total_payout_yes: float
+    total_payout_no: float
+    creator_payout: float
 
     class Config:
         from_attributes = True
@@ -106,6 +110,7 @@ class MarketWithBets(MarketRead):
     odds_history: list[OddsPoint]
     volume_yes: float
     volume_no: float
+    payouts: list["PayoutBreakdown"]
 
 
 class PositionRead(BaseModel):
@@ -131,3 +136,10 @@ class LedgerEntryRead(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PayoutBreakdown(BaseModel):
+    user_id: int
+    amount: float
+    entry_type: str
+    note: Optional[str]

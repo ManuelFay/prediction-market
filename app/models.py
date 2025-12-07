@@ -40,6 +40,10 @@ class Market(SQLModel, table=True):
     event_time: Optional[datetime] = None
     creator_id: int = Field(foreign_key="user.id")
     last_bet_at: Optional[datetime] = None
+    total_pot: float = 0.0
+    total_payout_yes: float = 0.0
+    total_payout_no: float = 0.0
+    creator_payout: float = 0.0
 
     creator: "User" = Relationship(back_populates="markets")
     bets: List["Bet"] = Relationship(back_populates="market")
@@ -64,6 +68,7 @@ class LedgerType(str, enum.Enum):
     DEPOSIT_SEED = "DEPOSIT_SEED"
     BET_DEBIT = "BET_DEBIT"
     PAYOUT = "PAYOUT"
+    CREATOR_PAYOUT = "CREATOR_PAYOUT"
     REFUND = "REFUND"
     STARTING_BALANCE = "STARTING_BALANCE"
 
