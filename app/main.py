@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -16,6 +16,7 @@ from .models import Bet, Complaint, LedgerEntry, LedgerType, Market, MarketStatu
 from .schemas import (
     BetCreate,
     BetRead,
+    BetPreview,
     ComplaintCreate,
     DepositRequest,
     LedgerEntryRead,
@@ -231,8 +232,9 @@ def place_bet(market_id: int, payload: BetCreate, user_id: int, session: Session
     add_ledger_entry(session, user.id, market_id=market.id, amount=-1, entry_type=LedgerType.BET_DEBIT, note=f"Bet on {side}")
 
     shares = delta_yes if side == "YES" else delta_no
-    odds = shares / 1.0
-    bet = Bet(user_id=user.id, market_id=market.id, side=side, shares=shares, cost=1.0, implied_odds=odds)
+    price_yes = amm.price_yes(new_q_yes, new_q_no, market.liquidity_b)
+    probability = price_yes if side == "YES" else 1 - price_yes
+    bet = Bet(user_id=user.id, market_id=market.id, side=side, shares=shares, cost=1.0, implied_odds=probability)
     session.add(bet)
     session.add(market)
     session.add(user)
@@ -276,11 +278,63 @@ def resolve_market(market_id: int, payload: ResolutionRequest, session: Session 
     return market_read(market)
 
 
+@app.delete("/markets/{market_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
+def delete_market(market_id: int, user_id: int, session: Session = Depends(get_session)) -> Response:
+    market = session.get(Market, market_id)
+    if not market:
+        raise HTTPException(status_code=404, detail="Market not found")
+    if market.creator_id != user_id:
+        raise HTTPException(status_code=403, detail="Only the creator can delete this market")
+
+    bets = session.exec(select(Bet).where(Bet.market_id == market_id)).all()
+    for bet in bets:
+        bettor = session.get(User, bet.user_id)
+        if bettor:
+            bettor.balance += bet.cost
+            add_ledger_entry(
+                session,
+                bettor.id,
+                market_id=market.id,
+                amount=bet.cost,
+                entry_type=LedgerType.REFUND,
+                note="Market deleted refund",
+            )
+            session.add(bettor)
+        session.delete(bet)
+
+    complaints = session.exec(select(Complaint).where(Complaint.market_id == market_id)).all()
+    for complaint in complaints:
+        session.delete(complaint)
+
+    ledger_entries = session.exec(select(LedgerEntry).where(LedgerEntry.market_id == market_id)).all()
+    for entry in ledger_entries:
+        session.delete(entry)
+
+    creator = session.get(User, market.creator_id)
+    if creator:
+        creator.balance += 10
+        add_ledger_entry(
+            session,
+            creator.id,
+            market_id=None,
+            amount=10,
+            entry_type=LedgerType.REFUND,
+            note="Seed returned (market deleted)",
+        )
+        session.add(creator)
+
+    session.delete(market)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 # Business logic helpers
 
 
 def market_read(market: Market) -> MarketRead:
     price = amm.price_yes(market.q_yes, market.q_no, market.liquidity_b)
+    yes_payout, yes_probability = compute_bet_preview(market, "YES")
+    no_payout, no_probability = compute_bet_preview(market, "NO")
     return MarketRead(
         id=market.id,
         question=market.question,
@@ -300,6 +354,8 @@ def market_read(market: Market) -> MarketRead:
         price_yes=price,
         price_no=1 - price,
         last_bet_at=market.last_bet_at,
+        yes_preview=BetPreview(payout=yes_payout, probability=yes_probability),
+        no_preview=BetPreview(payout=no_payout, probability=no_probability),
     )
 
 
@@ -318,6 +374,16 @@ def compute_odds_history(market: Market, bets: list[Bet]) -> list[OddsPoint]:
         history.append(OddsPoint(timestamp=bet.placed_at, price_yes=price, price_no=1 - price, side=bet.side, user_id=bet.user_id))
 
     return history
+
+
+def compute_bet_preview(market: Market, side: str) -> tuple[float, float]:
+    new_q_yes, new_q_no = amm.shares_for_cost(1.0, side, market.q_yes, market.q_no, market.liquidity_b)
+    delta_yes = new_q_yes - market.q_yes
+    delta_no = new_q_no - market.q_no
+    price_yes = amm.price_yes(new_q_yes, new_q_no, market.liquidity_b)
+    if side == "YES":
+        return delta_yes, price_yes
+    return delta_no, 1 - price_yes
 
 
 def pay_winners(session: Session, market: Market, outcome: str) -> None:

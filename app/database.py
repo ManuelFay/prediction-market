@@ -1,9 +1,15 @@
 from __future__ import annotations
 
-from sqlmodel import SQLModel, create_engine, Session
+from sqlalchemy.pool import StaticPool
+from sqlmodel import SQLModel, Session, create_engine
 
 DATABASE_URL = "sqlite:///./prediction.db"
-engine = create_engine(DATABASE_URL, echo=False, connect_args={"check_same_thread": False})
+engine = create_engine(
+    DATABASE_URL,
+    echo=False,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
 
 
 def init_db() -> None:
@@ -11,4 +17,5 @@ def init_db() -> None:
 
 
 def get_session() -> Session:
-    return Session(engine)
+    with Session(engine) as session:
+        yield session

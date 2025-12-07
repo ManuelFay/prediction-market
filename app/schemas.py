@@ -33,6 +33,11 @@ class DepositRequest(BaseModel):
     amount: float = Field(..., gt=0)
 
 
+class BetPreview(BaseModel):
+    payout: float
+    probability: float
+
+
 class MarketCreate(BaseModel):
     question: str
     description: Optional[str] = None
@@ -63,6 +68,8 @@ class MarketRead(BaseModel):
     price_yes: float
     price_no: float
     last_bet_at: Optional[datetime]
+    yes_preview: BetPreview
+    no_preview: BetPreview
 
     class Config:
         from_attributes = True
