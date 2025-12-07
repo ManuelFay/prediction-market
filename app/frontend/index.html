@@ -305,7 +305,7 @@
           <input id="login-password" type="password" placeholder="Paste your password" />
           <div class="inline-group">
             <button onclick="loginUser()">Start session</button>
-            <button class="secondary" id="logout-btn" onclick="logoutUser()" disabled>Log out</button>
+            <button class="secondary" id="logout-btn" onclick="logoutSession()" disabled>Log out</button>
           </div>
           <div class="muted" id="session-status">Waiting for login.</div>
           <div class="metrics hidden" id="session-metrics">
@@ -317,16 +317,6 @@
               <div class="label">Positions</div>
               <div class="value" id="positions-count">–</div>
             </div>
-          </div>
-          <div class="panel soft" id="auth-panel">
-            <div class="flex-between">
-              <div>
-                <div class="label">Betting access</div>
-                <div class="small" id="auth-status">Log in to unlock betting.</div>
-              </div>
-              <button class="secondary" onclick="authenticateUser()">Save password</button>
-            </div>
-            <input id="account-password" type="text" placeholder="Password for bets" />
           </div>
             <div class="panel soft hidden" id="active-account">
             <div class="label">Active account</div>
@@ -342,15 +332,10 @@
             </div>
             <span class="chip ghost" id="admin-chip">Locked</span>
           </div>
-          <label for="admin-username">Admin username</label>
-          <input id="admin-username" placeholder="admin" value="admin" />
-          <label for="admin-password">Admin password</label>
-          <input id="admin-password" type="password" placeholder="admin" value="admin" />
+          <div class="muted" id="admin-status">Log in as admin/admin in the main form to unlock controls.</div>
           <div class="inline-group">
-            <button class="secondary" onclick="loginAdmin()">Log in as admin</button>
-            <button class="secondary" onclick="logoutAdmin()">Log out</button>
+            <button class="secondary" id="admin-logout" onclick="logoutAdmin()" disabled>Log out admin</button>
           </div>
-          <div class="muted" id="admin-status">Admin locked.</div>
           <div id="admin-actions" class="hidden">
             <div class="inline-group">
               <input id="new-user-name" placeholder="New user name" />
@@ -358,17 +343,20 @@
             </div>
             <div class="small">New users start with 50€ and a fresh password.</div>
             <div id="password-display" class="warning hidden"></div>
+            <label for="admin-user-target">Manage user</label>
+            <select id="admin-user-target"></select>
+            <div class="small">Applies to balance updates and deletions.</div>
             <div class="panel soft">
               <div class="flex-between">
                 <div>
                   <div class="label">Balances</div>
-                  <div class="small">Top up the active account directly.</div>
+                  <div class="small">Top up the selected account directly.</div>
                 </div>
                 <input id="topup-amount" type="number" step="1" value="10" />
               </div>
               <div class="inline-group">
-                <button class="secondary" onclick="deposit()">Top up active user</button>
-                <button class="secondary danger" onclick="deleteActiveUser()">Delete active user</button>
+                <button class="secondary" onclick="deposit()">Top up selected user</button>
+                <button class="secondary danger" onclick="deleteActiveUser()">Delete selected user</button>
               </div>
             </div>
             <div class="panel soft">
@@ -499,78 +487,74 @@
         return true;
       }
 
-      function isUserAuthenticated(userId = getActiveUserId()) {
-        return Boolean(userId && getUserPassword(userId));
+      function getAdminSelectedUserId() {
+        const select = document.getElementById('admin-user-target');
+        return select ? Number(select.value) || null : null;
       }
 
-      function updateAuthStatus() {
-        const status = document.getElementById('auth-status');
-        const input = document.getElementById('account-password');
-        const userId = getActiveUserId();
-        if (!status) return;
-        if (!userId) {
-          status.textContent = 'Log in with your username to store a password for betting.';
-          if (input) input.value = '';
-          return;
-        }
-        const saved = getUserPassword(userId);
-        if (input) input.value = saved || '';
-        status.textContent = saved ? 'Password stored for betting.' : 'Enter the password to unlock betting.';
+      function renderAdminUserSelect() {
+        const select = document.getElementById('admin-user-target');
+        if (!select) return;
+        const options = ['<option value="">Select user</option>'];
+        users.forEach((u) => options.push(`<option value="${u.id}">${u.name} (ID ${u.id})</option>`));
+        select.innerHTML = options.join('');
       }
 
-      function authenticateUser() {
-        const userId = getActiveUserId();
-        if (!userId) return alert('Log in first.');
-        const password = document.getElementById('account-password').value.trim();
-        if (!password) return alert('Enter the password you were given.');
-        setUserPassword(userId, password);
-        updateAuthStatus();
-        alert('Betting unlocked for this user.');
+      function setAdminSelectedUser(userId) {
+        const select = document.getElementById('admin-user-target');
+        if (!select) return;
+        select.value = userId ? String(userId) : '';
       }
 
-      function loginUser() {
+      async function loginUser() {
         const username = document.getElementById('login-username').value.trim();
         const password = document.getElementById('login-password').value.trim();
         if (!username || !password) return alert('Enter both username and password.');
+        const isAdmin = username.toLowerCase() === 'admin' && password === 'admin';
+        if (isAdmin) {
+          logoutUser(false);
+          adminSession = { username, password, authenticated: true };
+          updateAdminStatus();
+          document.getElementById('session-status').textContent = 'Admin session active. User access disabled.';
+          alert('Admin controls unlocked.');
+          await refreshActiveUser();
+          switchTab('admin');
+          return;
+        }
+        logoutAdmin();
         const user = users.find((u) => u.name.toLowerCase() === username.toLowerCase());
         if (!user) return alert('No user found with that username. Ask the admin to create an account.');
         setUserPassword(user.id, password);
-        document.getElementById('account-password').value = password;
         setActiveUser(user);
         renderSessionHeader();
-        updateAuthStatus();
       }
 
-      function logoutUser() {
+      function logoutUser(updateUi = true) {
         activeUserId = null;
         activeUserName = '';
         localStorage.removeItem('activeUserId');
         localStorage.removeItem('activeUserName');
         document.getElementById('login-password').value = '';
-        document.getElementById('account-password').value = '';
         renderSessionHeader();
-        refreshActiveUser();
-      }
-
-      function loginAdmin() {
-        const username = document.getElementById('admin-username').value.trim();
-        const password = document.getElementById('admin-password').value.trim();
-        if (!username || !password) return alert('Enter admin credentials.');
-        if (username !== 'admin' || password !== 'admin') return alert('Invalid admin credentials.');
-        adminSession = { username, password, authenticated: true };
-        updateAdminStatus();
-        alert('Admin controls unlocked.');
+        if (updateUi) refreshActiveUser();
       }
 
       function logoutAdmin() {
         adminSession = { username: '', password: '', authenticated: false };
         updateAdminStatus();
+        refreshActiveUser();
+      }
+
+      function logoutSession() {
+        logoutAdmin();
+        logoutUser();
       }
 
       function updateAdminStatus() {
         const statusBox = document.getElementById('admin-status');
         const actions = document.getElementById('admin-actions');
         const chip = document.getElementById('admin-chip');
+        const logoutButton = document.getElementById('admin-logout');
         if (adminSession.authenticated) {
           if (statusBox) statusBox.textContent = `Admin unlocked as ${adminSession.username}.`;
           if (actions) actions.classList.remove('hidden');
@@ -578,23 +562,36 @@
             chip.textContent = 'Admin online';
             chip.classList.remove('ghost');
           }
+          if (logoutButton) logoutButton.disabled = false;
           loadAdminDirectory();
         } else {
-          if (statusBox) statusBox.textContent = 'Admin locked.';
+          if (statusBox) statusBox.textContent = 'Log in as admin/admin in the main form to unlock controls.';
           if (actions) actions.classList.add('hidden');
           if (chip) {
             chip.textContent = 'Locked';
             chip.classList.add('ghost');
           }
+          if (logoutButton) logoutButton.disabled = true;
           adminDirectory = [];
           renderAdminDirectory();
         }
+      }
+
+      function isUserAuthenticated(userId = getActiveUserId()) {
+        if (adminSession.authenticated) return false;
+        return Boolean(userId && getUserPassword(userId));
       }
 
       function renderSessionHeader() {
         const chip = document.getElementById('session-chip');
         const metrics = document.getElementById('session-metrics');
         if (!chip) return;
+        if (adminSession.authenticated) {
+          chip.textContent = 'Admin session';
+          chip.classList.remove('ghost');
+          metrics?.classList.add('hidden');
+          return;
+        }
         if (activeUserId) {
           const name = activeUserName || userName(activeUserId);
           chip.textContent = `Logged in as ${name}`;
@@ -676,10 +673,11 @@
         }
         document.getElementById('new-user-name').value = '';
         revealPassword(user);
-        document.getElementById('account-password').value = user.password;
+        setUserPassword(user.id, user.password);
         await loadUsers();
+        renderAdminUserSelect();
+        setAdminSelectedUser(user.id);
         setActiveUser(user);
-        updateAuthStatus();
         await loadAdminDirectory();
       }
 
@@ -704,8 +702,8 @@
 
       async function deposit() {
         if (!ensureAdmin()) return;
-        const userId = getActiveUserId();
-        if (!userId) return;
+        const userId = getAdminSelectedUserId();
+        if (!userId) return alert('Select a user to top up.');
         const amount = Number(document.getElementById('topup-amount').value || '0');
         if (amount <= 0) return alert('Enter a positive amount');
         try {
@@ -718,12 +716,13 @@
           alert(err.message || 'Top-up failed');
           return;
         }
+        await loadUsers();
         await refreshActiveUser();
       }
 
       async function deleteActiveUser() {
         if (!ensureAdmin()) return;
-        const userId = getActiveUserId();
+        const userId = getAdminSelectedUserId();
         if (!userId) return alert('Pick a user to delete.');
         if (!confirm('Delete this user account? Markets must be cleared and no bets outstanding.')) return;
         try {
@@ -736,6 +735,7 @@
         document.getElementById('positions-count').textContent = '–';
         setActiveUser(null);
         await loadUsers();
+        renderAdminUserSelect();
       }
 
       function toggleCreateForm() {
@@ -888,6 +888,7 @@
         renderSessionHeader();
         await refreshActiveUser();
         updateShareLink();
+        renderAdminUserSelect();
       }
 
       async function refreshActiveUser() {
@@ -907,14 +908,16 @@
           document.getElementById('balance-chip').textContent = '–';
           selectedMarket = null;
           renderMarketDetail(null);
-          updateAuthStatus();
           renderAdminMarkets();
           updateShareLink();
           if (appShell) appShell.classList.add('hidden');
           if (logoutBtn) logoutBtn.disabled = true;
           if (activeNameEl) activeNameEl.textContent = '–';
           if (menuNameEl) menuNameEl.textContent = '–';
-          if (sessionStatus) sessionStatus.textContent = 'Waiting for login.';
+          if (sessionStatus)
+            sessionStatus.textContent = adminSession.authenticated
+              ? 'Admin session active. User access disabled.'
+              : 'Waiting for login.';
           if (activeCard) activeCard.classList.add('hidden');
           renderSessionHeader();
           return;
@@ -932,7 +935,6 @@
         localStorage.setItem('activeUserId', String(userId));
         localStorage.setItem('activeUserName', activeUserName);
         updateShareLink();
-        updateAuthStatus();
         if (appShell) appShell.classList.remove('hidden');
         if (logoutBtn) logoutBtn.disabled = false;
         renderSessionHeader();
@@ -1072,7 +1074,7 @@
                   <button onclick="placeBet(${m.id}, 'YES')" ${!authenticated || m.price_yes > 0.95 ? 'disabled' : ''}>
                     Bet 1€ YES<span class="button-sub">${
                       !authenticated
-                        ? 'Unlock betting with your password'
+                        ? 'Log in to place bets'
                         : m.price_yes > 0.95
                         ? 'Locked above 95% YES'
                         : `Win ${m.yes_preview.payout.toFixed(2)}€`
@@ -1081,7 +1083,7 @@
                   <button onclick="placeBet(${m.id}, 'NO')" ${!authenticated || m.price_yes < 0.05 ? 'disabled' : ''}>
                     Bet 1€ NO<span class="button-sub">${
                       !authenticated
-                        ? 'Unlock betting with your password'
+                        ? 'Log in to place bets'
                         : m.price_yes < 0.05
                         ? 'Locked below 5% YES'
                         : `Win ${m.no_preview.payout.toFixed(2)}€`
@@ -1127,14 +1129,14 @@
           ? `
               <button onclick="placeBet(${market.id}, 'YES')" ${!canPlaceBets || yesLocked ? 'disabled' : ''}>Bet 1€ YES<span class="button-sub">${
                 !authenticated
-                  ? 'Unlock betting with your password'
+                  ? 'Log in to place bets'
                   : yesLocked
                   ? 'Locked above 95% YES'
                   : `Win ${market.yes_preview.payout.toFixed(2)}€`
               }</span></button>
               <button onclick="placeBet(${market.id}, 'NO')" ${!canPlaceBets || noLocked ? 'disabled' : ''}>Bet 1€ NO<span class="button-sub">${
                 !authenticated
-                  ? 'Unlock betting with your password'
+                  ? 'Log in to place bets'
                   : noLocked
                   ? 'Locked below 5% YES'
                   : `Win ${market.no_preview.payout.toFixed(2)}€`
