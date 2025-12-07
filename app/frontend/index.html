@@ -38,11 +38,47 @@
         align-items: start;
       }
       section {
-        background: rgba(15, 23, 42, 0.9);
+        background: transparent;
+        border: none;
+        padding: 0;
+      }
+      .sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .surface {
+        background: rgba(15, 23, 42, 0.95);
         border: 1px solid #1f2937;
-        border-radius: 14px;
+        border-radius: 16px;
         padding: 16px;
-        backdrop-filter: blur(4px);
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+      }
+      .panel.elevated {
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+        background: linear-gradient(160deg, rgba(17, 24, 39, 0.9), rgba(30, 41, 59, 0.85));
+      }
+      .panel.soft {
+        background: rgba(17, 24, 39, 0.65);
+        border-color: #1f2937;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #14b8a6, #2563eb);
+        color: #0b1021;
+        font-weight: 700;
+        border: 1px solid #38bdf8;
+      }
+      .chip.ghost {
+        background: #0b1221;
+        color: #e2e8f0;
+        border-color: #1f2937;
+      }
+      #app-shell.hidden {
+        display: none;
       }
       h2 {
         margin-top: 0;
@@ -248,17 +284,64 @@
       <h1>Friends-only Prediction Market</h1>
     </header>
     <main>
-      <section>
-        <h2>Accounts</h2>
-        <h3>Backend connection</h3>
-        <label for="backend-url">Backend URL</label>
-        <input id="backend-url" placeholder="https://my-market.example.com" />
-        <div class="inline-group">
-          <button class="secondary" onclick="applyBackendUrl()">Connect to backend</button>
-          <button class="secondary" onclick="refreshData()">Refresh data</button>
+      <section class="sidebar">
+        <div class="panel elevated">
+          <div class="flex-between">
+            <div>
+              <h2>Log in</h2>
+              <div class="muted">Sign in with your username to unlock the market.</div>
+            </div>
+            <span class="chip" id="session-chip">Offline</span>
+          </div>
+          <label for="backend-url">Backend URL</label>
+          <input id="backend-url" placeholder="https://my-market.example.com" />
+          <div class="inline-group">
+            <button class="secondary" onclick="applyBackendUrl()">Connect</button>
+            <button class="secondary" onclick="refreshData()">Refresh</button>
+          </div>
+          <label for="login-username">Username</label>
+          <input id="login-username" placeholder="e.g. Alice" />
+          <label for="login-password">Password</label>
+          <input id="login-password" type="password" placeholder="Paste your password" />
+          <div class="inline-group">
+            <button onclick="loginUser()">Start session</button>
+            <button class="secondary" id="logout-btn" onclick="logoutUser()" disabled>Log out</button>
+          </div>
+          <div class="muted" id="session-status">Waiting for login.</div>
+          <div class="metrics hidden" id="session-metrics">
+            <div class="metric">
+              <div class="label">Balance</div>
+              <div class="value" id="balance">–</div>
+            </div>
+            <div class="metric">
+              <div class="label">Positions</div>
+              <div class="value" id="positions-count">–</div>
+            </div>
+          </div>
+          <div class="panel soft" id="auth-panel">
+            <div class="flex-between">
+              <div>
+                <div class="label">Betting access</div>
+                <div class="small" id="auth-status">Log in to unlock betting.</div>
+              </div>
+              <button class="secondary" onclick="authenticateUser()">Save password</button>
+            </div>
+            <input id="account-password" type="text" placeholder="Password for bets" />
+          </div>
+            <div class="panel soft hidden" id="active-account">
+            <div class="label">Active account</div>
+            <div class="value" id="active-user-name">–</div>
+            <div class="small" id="share-link"></div>
+          </div>
         </div>
-        <div class="panel">
-          <h3>Admin console</h3>
+        <div class="panel elevated">
+          <div class="flex-between">
+            <div>
+              <h3>Admin console</h3>
+              <div class="muted">Manage users and share credentials.</div>
+            </div>
+            <span class="chip ghost" id="admin-chip">Locked</span>
+          </div>
           <label for="admin-username">Admin username</label>
           <input id="admin-username" placeholder="admin" value="admin" />
           <label for="admin-password">Admin password</label>
@@ -269,81 +352,87 @@
           </div>
           <div class="muted" id="admin-status">Admin locked.</div>
           <div id="admin-actions" class="hidden">
-            <hr />
-            <label for="new-user-name">New user name</label>
-            <input id="new-user-name" placeholder="Alice" />
-            <button onclick="createUser()">Create user (starts with 50€)</button>
+            <div class="inline-group">
+              <input id="new-user-name" placeholder="New user name" />
+              <button onclick="createUser()">Create user</button>
+            </div>
+            <div class="small">New users start with 50€ and a fresh password.</div>
             <div id="password-display" class="warning hidden"></div>
-            <hr />
-            <label for="topup-amount">Top-up amount (€)</label>
-            <input id="topup-amount" type="number" step="1" value="10" />
-            <button onclick="deposit()" class="secondary">Top up active user</button>
-            <button class="secondary danger" onclick="deleteActiveUser()">Delete active user</button>
-            <button class="secondary danger" onclick="resetPlatform()">Reset platform (delete all users)</button>
+            <div class="panel soft">
+              <div class="flex-between">
+                <div>
+                  <div class="label">Balances</div>
+                  <div class="small">Top up the active account directly.</div>
+                </div>
+                <input id="topup-amount" type="number" step="1" value="10" />
+              </div>
+              <div class="inline-group">
+                <button class="secondary" onclick="deposit()">Top up active user</button>
+                <button class="secondary danger" onclick="deleteActiveUser()">Delete active user</button>
+              </div>
+            </div>
+            <div class="panel soft">
+              <div class="flex-between">
+                <div>
+                  <div class="label">Platform</div>
+                  <div class="small">Maintenance tools</div>
+                </div>
+                <button class="secondary danger" onclick="resetPlatform()">Reset platform</button>
+              </div>
+            </div>
+            <h4>User directory</h4>
+            <div class="ledger-list" id="admin-directory"></div>
           </div>
         </div>
-        <hr />
-        <h3>Account sync</h3>
-        <label for="existing-user-id">Load existing user by ID</label>
-        <div class="inline-group">
-          <input id="existing-user-id" type="number" min="1" placeholder="123" />
-          <button class="secondary" onclick="useExistingUser()">Set active user</button>
-        </div>
-        <div class="muted" id="share-link"></div>
-        <hr />
-        <label for="active-user">Active user</label>
-        <select id="active-user" onchange="refreshActiveUser()"></select>
-        <h3>Account login</h3>
-        <label for="account-password">Enter password to place bets</label>
-        <div class="inline-group">
-          <input id="account-password" type="text" placeholder="Paste password" />
-          <button class="secondary" onclick="authenticateUser()">Unlock betting</button>
-        </div>
-        <div class="muted" id="auth-status">Select a user to log in.</div>
-        <div class="metrics">
-          <div class="metric">
-            <div class="label">Balance</div>
-            <div class="value" id="balance">–</div>
-          </div>
-          <div class="metric">
-            <div class="label">Positions</div>
-            <div class="value" id="positions-count">–</div>
-          </div>
-        </div>
-        <h3>Open positions</h3>
-        <div class="bets-list" id="positions"></div>
-        <h3>Ledger</h3>
-        <div class="ledger-list" id="ledger"></div>
       </section>
-      <section>
-        <div class="tab-bar">
-          <button class="tab-button active" id="tab-open-btn" onclick="switchTab('open')">Open markets</button>
-          <button class="tab-button" id="tab-admin-btn" onclick="switchTab('admin')">Market admin</button>
+      <section id="app-shell" class="hidden">
+        <div class="surface">
+          <div class="tab-bar">
+            <button class="tab-button active" id="tab-open-btn" onclick="switchTab('open')">Open markets</button>
+            <button class="tab-button" id="tab-admin-btn" onclick="switchTab('admin')">Market admin</button>
+          </div>
+          <div id="tab-open" class="tab-content active">
+            <div class="flex-between">
+              <div>
+                <div class="label">Active account</div>
+                <div class="value" id="menu-user-name">–</div>
+              </div>
+              <button class="secondary" id="create-toggle" onclick="toggleCreateForm()">Create new market</button>
+            </div>
+            <div id="create-panel" class="panel hidden">
+              <div class="flex-between small"><span>Seed: 10€ will be locked from creator.</span><span>Bet size: fixed 1€</span></div>
+              <label for="question">Question</label>
+              <input id="question" placeholder="YES if PSG beats OM?" />
+              <label for="description">Details</label>
+              <textarea id="description" placeholder="Resolution rules, notes"></textarea>
+              <label for="initial-prob">Initial probability for YES (0-1)</label>
+              <input id="initial-prob" type="number" step="0.01" value="0.5" />
+              <label for="liquidity-b">Liquidity b (controls slippage)</label>
+              <input id="liquidity-b" type="number" step="0.5" value="5" />
+              <button onclick="createMarket()">Create market</button>
+            </div>
+            <div id="open-markets"></div>
+            <div id="market-detail" class="panel"><div class="muted">Select a market to see details</div></div>
+          </div>
+          <div id="tab-admin" class="tab-content">
+            <h2>Market admin</h2>
+            <div class="muted">Manage the markets you created. You can resolve, delete or open their details.</div>
+            <div id="admin-markets"></div>
+          </div>
         </div>
-        <div id="tab-open" class="tab-content active">
+        <div class="panel elevated">
           <div class="flex-between">
-            <h2>Open markets</h2>
-            <button class="secondary" id="create-toggle" onclick="toggleCreateForm()">Create new market</button>
+            <h3>Open positions</h3>
+            <span class="chip ghost" id="positions-chip">0</span>
           </div>
-          <div id="create-panel" class="panel hidden">
-            <div class="flex-between small"><span>Seed: 10€ will be locked from creator.</span><span>Bet size: fixed 1€</span></div>
-            <label for="question">Question</label>
-            <input id="question" placeholder="YES if PSG beats OM?" />
-            <label for="description">Details</label>
-            <textarea id="description" placeholder="Resolution rules, notes"></textarea>
-            <label for="initial-prob">Initial probability for YES (0-1)</label>
-            <input id="initial-prob" type="number" step="0.01" value="0.5" />
-            <label for="liquidity-b">Liquidity b (controls slippage)</label>
-            <input id="liquidity-b" type="number" step="0.5" value="5" />
-            <button onclick="createMarket()">Create market</button>
-          </div>
-          <div id="open-markets"></div>
-          <div id="market-detail" class="panel"><div class="muted">Select a market to see details</div></div>
+          <div class="bets-list" id="positions"></div>
         </div>
-        <div id="tab-admin" class="tab-content">
-          <h2>Market admin</h2>
-          <div class="muted">Manage the markets you created. You can resolve, delete or open their details.</div>
-          <div id="admin-markets"></div>
+        <div class="panel elevated">
+          <div class="flex-between">
+            <h3>Ledger</h3>
+            <span class="chip ghost" id="balance-chip">–</span>
+          </div>
+          <div class="ledger-list" id="ledger"></div>
         </div>
       </section>
     </main>
@@ -353,9 +442,12 @@
       let users = [];
       let markets = [];
       let selectedMarket = null;
+      let activeUserId = Number(localStorage.getItem('activeUserId') || '') || null;
+      let activeUserName = localStorage.getItem('activeUserName') || '';
       let savedPasswords = JSON.parse(localStorage.getItem('userPasswords') || '{}');
       let createFormOpen = false;
       let adminSession = { username: '', password: '', authenticated: false };
+      let adminDirectory = [];
       const initialUserFromQuery = Number(new URLSearchParams(window.location.search).get('user_id') || '');
 
       function applyBackendUrl() {
@@ -417,7 +509,7 @@
         const userId = getActiveUserId();
         if (!status) return;
         if (!userId) {
-          status.textContent = 'Select a user to log in.';
+          status.textContent = 'Log in with your username to store a password for betting.';
           if (input) input.value = '';
           return;
         }
@@ -428,12 +520,36 @@
 
       function authenticateUser() {
         const userId = getActiveUserId();
-        if (!userId) return alert('Pick a user first.');
+        if (!userId) return alert('Log in first.');
         const password = document.getElementById('account-password').value.trim();
         if (!password) return alert('Enter the password you were given.');
         setUserPassword(userId, password);
         updateAuthStatus();
         alert('Betting unlocked for this user.');
+      }
+
+      function loginUser() {
+        const username = document.getElementById('login-username').value.trim();
+        const password = document.getElementById('login-password').value.trim();
+        if (!username || !password) return alert('Enter both username and password.');
+        const user = users.find((u) => u.name.toLowerCase() === username.toLowerCase());
+        if (!user) return alert('No user found with that username. Ask the admin to create an account.');
+        setUserPassword(user.id, password);
+        document.getElementById('account-password').value = password;
+        setActiveUser(user);
+        renderSessionHeader();
+        updateAuthStatus();
+      }
+
+      function logoutUser() {
+        activeUserId = null;
+        activeUserName = '';
+        localStorage.removeItem('activeUserId');
+        localStorage.removeItem('activeUserName');
+        document.getElementById('login-password').value = '';
+        document.getElementById('account-password').value = '';
+        renderSessionHeader();
+        refreshActiveUser();
       }
 
       function loginAdmin() {
@@ -454,13 +570,76 @@
       function updateAdminStatus() {
         const statusBox = document.getElementById('admin-status');
         const actions = document.getElementById('admin-actions');
+        const chip = document.getElementById('admin-chip');
         if (adminSession.authenticated) {
           if (statusBox) statusBox.textContent = `Admin unlocked as ${adminSession.username}.`;
           if (actions) actions.classList.remove('hidden');
+          if (chip) {
+            chip.textContent = 'Admin online';
+            chip.classList.remove('ghost');
+          }
+          loadAdminDirectory();
         } else {
           if (statusBox) statusBox.textContent = 'Admin locked.';
           if (actions) actions.classList.add('hidden');
+          if (chip) {
+            chip.textContent = 'Locked';
+            chip.classList.add('ghost');
+          }
+          adminDirectory = [];
+          renderAdminDirectory();
         }
+      }
+
+      function renderSessionHeader() {
+        const chip = document.getElementById('session-chip');
+        const metrics = document.getElementById('session-metrics');
+        if (!chip) return;
+        if (activeUserId) {
+          const name = activeUserName || userName(activeUserId);
+          chip.textContent = `Logged in as ${name}`;
+          chip.classList.remove('ghost');
+          metrics?.classList.remove('hidden');
+        } else {
+          chip.textContent = 'Offline';
+          chip.classList.add('ghost');
+          metrics?.classList.add('hidden');
+        }
+      }
+
+      function renderAdminDirectory() {
+        const container = document.getElementById('admin-directory');
+        if (!container) return;
+        if (!adminSession.authenticated) {
+          container.innerHTML = '<div class="muted">Log in as admin to view user credentials.</div>';
+          return;
+        }
+        if (!adminDirectory.length) {
+          container.innerHTML = '<div class="muted">No users yet. Create one to share credentials.</div>';
+          return;
+        }
+        container.innerHTML = adminDirectory
+          .map(
+            (u) => `
+              <div class="list-row small">
+                <div class="flex-between"><strong>${u.name}</strong><span>ID ${u.id}</span></div>
+                <div>Balance: ${u.balance.toFixed(2)}€</div>
+                <div>Password: <span class="pill">${u.password}</span></div>
+              </div>
+            `,
+          )
+          .join('');
+      }
+
+      async function loadAdminDirectory() {
+        if (!adminSession.authenticated) return;
+        try {
+          adminDirectory = await fetchJSON('/admin/users', { headers: adminHeaders() });
+        } catch (err) {
+          adminDirectory = [];
+          alert(err.message || 'Could not load admin directory');
+        }
+        renderAdminDirectory();
       }
 
       function revealPassword(user) {
@@ -499,8 +678,9 @@
         revealPassword(user);
         document.getElementById('account-password').value = user.password;
         await loadUsers();
-        setActiveUserId(user.id);
+        setActiveUser(user);
         updateAuthStatus();
+        await loadAdminDirectory();
       }
 
       async function resetPlatform() {
@@ -517,6 +697,7 @@
         document.getElementById('ledger').innerHTML = '';
         document.getElementById('positions').innerHTML = '';
         selectedMarket = null;
+        setActiveUser(null);
         await loadUsers();
         await loadMarkets();
       }
@@ -553,13 +734,13 @@
         }
         document.getElementById('balance').textContent = '–';
         document.getElementById('positions-count').textContent = '–';
-        setActiveUserId('');
+        setActiveUser(null);
         await loadUsers();
       }
 
       function toggleCreateForm() {
         const userId = getActiveUserId();
-        if (!userId) return alert('Pick a user to create a market.');
+        if (!userId) return alert('Log in to create a market.');
         createFormOpen = !createFormOpen;
         document.getElementById('create-panel').classList.toggle('hidden', !createFormOpen);
         document.getElementById('create-toggle').textContent = createFormOpen ? 'Hide market form' : 'Create new market';
@@ -570,7 +751,7 @@
 
       async function createMarket() {
         const userId = getActiveUserId();
-        if (!userId) return alert('Pick a creator');
+        if (!userId) return alert('Log in to create a market.');
         const payload = {
           question: document.getElementById('question').value,
           description: document.getElementById('description').value,
@@ -590,7 +771,7 @@
 
       async function placeBet(marketId, side) {
         const userId = getActiveUserId();
-        if (!userId) return alert('Pick a user to bet');
+        if (!userId) return alert('Log in to place bets.');
         const password = getUserPassword(userId);
         if (!password) return alert('Enter the account password to place bets.');
         try {
@@ -633,7 +814,7 @@
 
       async function deleteMarket(marketId) {
         const userId = getActiveUserId();
-        if (!userId) return alert('Pick a user to manage markets');
+        if (!userId) return alert('Log in to manage markets.');
         if (!confirm('Delete this market and refund everyone?')) return;
         await fetchJSON(`/markets/${marketId}?user_id=${userId}`, { method: 'DELETE' });
         selectedMarket = null;
@@ -643,7 +824,7 @@
 
       async function complain(marketId) {
         const userId = getActiveUserId();
-        if (!userId) return alert('Pick a user to complain');
+        if (!userId) return alert('Log in to file a complaint.');
         const reason = prompt('Reason for complaint');
         if (!reason) return;
         await fetchJSON(`/markets/${marketId}/complain?user_id=${userId}`, {
@@ -654,14 +835,22 @@
       }
 
       function getActiveUserId() {
-        const select = document.getElementById('active-user');
-        return select.value ? Number(select.value) : null;
+        return activeUserId;
       }
 
-      function setActiveUserId(userId) {
-        const select = document.getElementById('active-user');
-        if (!select) return;
-        select.value = userId;
+      function setActiveUser(user) {
+        if (!user) {
+          activeUserId = null;
+          activeUserName = '';
+          localStorage.removeItem('activeUserId');
+          localStorage.removeItem('activeUserName');
+        } else {
+          activeUserId = user.id;
+          activeUserName = user.name;
+          localStorage.setItem('activeUserId', String(user.id));
+          localStorage.setItem('activeUserName', user.name);
+        }
+        renderSessionHeader();
         refreshActiveUser();
       }
 
@@ -670,7 +859,7 @@
         const linkContainer = document.getElementById('share-link');
         if (!linkContainer) return;
         if (!userId) {
-          linkContainer.textContent = 'Pick a user to generate a shareable link.';
+          linkContainer.textContent = 'Log in to generate a shareable link for this account.';
           return;
         }
         const url = `${window.location.origin}${window.location.pathname}?user_id=${userId}`;
@@ -683,63 +872,70 @@
       }
 
       async function loadUsers() {
-        const current = getActiveUserId();
-        const preferred = current || Number(localStorage.getItem('activeUserId') || initialUserFromQuery || '');
         users = await fetchJSON('/users');
-        const select = document.getElementById('active-user');
-        select.innerHTML = '<option value="">Select user</option>';
-        users.forEach((u) => {
-          const opt = document.createElement('option');
-          opt.value = u.id;
-          opt.textContent = `${u.name} (balance ${u.balance.toFixed(2)}€)`;
-          select.appendChild(opt);
-        });
-        if (current && users.some((u) => u.id === current)) {
-          select.value = current;
-        } else if (preferred && users.some((u) => u.id === preferred)) {
-          select.value = preferred;
-        } else if (!select.value && users.length) {
-          select.value = users[0].id;
+        if (activeUserId && !users.some((u) => u.id === activeUserId)) {
+          activeUserId = null;
+          activeUserName = '';
         }
+        const preferred = activeUserId || Number(localStorage.getItem('activeUserId') || initialUserFromQuery || '');
+        if (!activeUserId && preferred) {
+          const match = users.find((u) => u.id === preferred);
+          if (match) {
+            activeUserId = match.id;
+            activeUserName = match.name;
+          }
+        }
+        renderSessionHeader();
         await refreshActiveUser();
         updateShareLink();
       }
 
       async function refreshActiveUser() {
         const userId = getActiveUserId();
+        const appShell = document.getElementById('app-shell');
+        const logoutBtn = document.getElementById('logout-btn');
+        const activeNameEl = document.getElementById('active-user-name');
+        const menuNameEl = document.getElementById('menu-user-name');
+        const sessionStatus = document.getElementById('session-status');
+        const activeCard = document.getElementById('active-account');
         if (!userId) {
           document.getElementById('balance').textContent = '–';
           document.getElementById('positions-count').textContent = '–';
           document.getElementById('ledger').innerHTML = '';
           document.getElementById('positions').innerHTML = '';
+          document.getElementById('positions-chip').textContent = '0';
+          document.getElementById('balance-chip').textContent = '–';
           selectedMarket = null;
           renderMarketDetail(null);
           updateAuthStatus();
+          renderAdminMarkets();
+          updateShareLink();
+          if (appShell) appShell.classList.add('hidden');
+          if (logoutBtn) logoutBtn.disabled = true;
+          if (activeNameEl) activeNameEl.textContent = '–';
+          if (menuNameEl) menuNameEl.textContent = '–';
+          if (sessionStatus) sessionStatus.textContent = 'Waiting for login.';
+          if (activeCard) activeCard.classList.add('hidden');
+          renderSessionHeader();
           return;
         }
         const user = await fetchJSON(`/users/${userId}`);
         document.getElementById('balance').textContent = `${user.balance.toFixed(2)} €`;
+        document.getElementById('balance-chip').textContent = `${user.balance.toFixed(2)} €`;
+        if (activeNameEl) activeNameEl.textContent = user.name;
+        if (menuNameEl) menuNameEl.textContent = user.name;
+        if (sessionStatus) sessionStatus.textContent = `Logged in as ${user.name}.`;
+        if (activeCard) activeCard.classList.remove('hidden');
         await loadLedger(userId);
         await loadPositions(userId);
         renderAdminMarkets();
         localStorage.setItem('activeUserId', String(userId));
+        localStorage.setItem('activeUserName', activeUserName);
         updateShareLink();
         updateAuthStatus();
-      }
-
-      async function useExistingUser() {
-        const input = document.getElementById('existing-user-id');
-        const userId = Number((input.value || '').trim());
-        if (!userId) return alert('Enter a valid user ID');
-        try {
-          const user = await fetchJSON(`/users/${userId}`);
-          if (!users.some((u) => u.id === user.id)) {
-            users.push(user);
-          }
-          setActiveUserId(user.id);
-        } catch (err) {
-          alert('Could not load that user. Make sure the ID exists on this backend.');
-        }
+        if (appShell) appShell.classList.remove('hidden');
+        if (logoutBtn) logoutBtn.disabled = false;
+        renderSessionHeader();
       }
 
       async function loadLedger(userId) {
@@ -758,6 +954,7 @@
       async function loadPositions(userId) {
         const positions = await fetchJSON(`/users/${userId}/positions`);
         document.getElementById('positions-count').textContent = positions.length;
+        document.getElementById('positions-chip').textContent = positions.length;
         const container = document.getElementById('positions');
         container.innerHTML = positions
           .map(
@@ -1002,7 +1199,7 @@
         const container = document.getElementById('admin-markets');
         const activeUserId = getActiveUserId();
         if (!activeUserId) {
-          container.innerHTML = '<div class="muted">Select a user to see their markets.</div>';
+          container.innerHTML = '<div class="muted">Log in to see the markets you created.</div>';
           return;
         }
         const mine = markets.filter((m) => m.creator_id === Number(activeUserId));
@@ -1057,14 +1254,17 @@
       }
 
       async function init() {
+        renderSessionHeader();
         updateAdminStatus();
         updateBackendInput();
+        renderAdminDirectory();
         await refreshData();
       }
 
       async function refreshData() {
         await loadUsers();
         await loadMarkets();
+        if (adminSession.authenticated) await loadAdminDirectory();
       }
 
       init();

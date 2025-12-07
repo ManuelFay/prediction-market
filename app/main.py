@@ -108,6 +108,14 @@ def list_users(session: Session = Depends(get_session)) -> List[User]:
     return session.exec(select(User)).all()
 
 
+@app.get("/admin/users", response_model=List[UserAuthRead])
+def list_users_with_passwords(
+    session: Session = Depends(get_session),
+    _: None = Depends(require_admin),
+) -> List[UserAuthRead]:
+    return session.exec(select(User)).all()
+
+
 @app.post("/reset", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
 def reset_state(session: Session = Depends(get_session), _: None = Depends(require_admin)) -> Response:
     session.exec(delete(LedgerEntry))
