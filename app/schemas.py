@@ -33,6 +33,11 @@ class UserAuthRead(UserRead):
     password: str
 
 
+class UserLogin(BaseModel):
+    name: str
+    password: str
+
+
 class DepositRequest(BaseModel):
     amount: float = Field(..., gt=0)
 

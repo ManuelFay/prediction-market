@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from sqlalchemy import func
 from sqlmodel import Session, select, delete
 
 from . import amm
@@ -30,6 +31,7 @@ from .schemas import (
     ResolutionRequest,
     UserCreate,
     UserAuthRead,
+    UserLogin,
     UserRead,
     PayoutBreakdown,
 )
@@ -106,6 +108,16 @@ def serve_frontend() -> HTMLResponse:
 
 
 # User endpoints
+
+
+@app.post("/auth/login", response_model=UserAuthRead)
+def authenticate_user(payload: UserLogin, session: Session = Depends(get_session)) -> User:
+    user = session.exec(select(User).where(func.lower(User.name) == payload.name.lower())).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if payload.password != user.password:
+        raise HTTPException(status_code=403, detail="Invalid credentials")
+    return user
 
 
 @app.post("/users", response_model=UserAuthRead, status_code=status.HTTP_201_CREATED)

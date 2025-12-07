@@ -212,10 +212,10 @@
         align-items: center;
       }
       .chart {
-        background: #0b1221;
+        background: linear-gradient(180deg, rgba(37, 99, 235, 0.12), rgba(15, 23, 42, 0.6));
         border: 1px solid #1f2937;
-        border-radius: 10px;
-        padding: 10px;
+        border-radius: 14px;
+        padding: 14px;
       }
       .warning {
         background: #3f1f1f;
@@ -260,6 +260,28 @@
         border-radius: 12px;
         padding: 12px;
       }
+
+      .admin-panel {
+        background: linear-gradient(135deg, #0b1227, #0f172a);
+        border-color: #1d4ed8;
+        box-shadow: 0 10px 30px rgba(37, 99, 235, 0.15);
+      }
+
+      .admin-panel .chip {
+        background: #1d4ed8;
+        color: #e0f2fe;
+      }
+
+      .admin-panel .secondary {
+        background: #111827;
+        border-color: #1d4ed8;
+        color: #e0f2fe;
+      }
+
+      .admin-panel .secondary.danger {
+        background: #7f1d1d;
+        border-color: #ef4444;
+      }
       .inline-group {
         display: flex;
         gap: 8px;
@@ -293,12 +315,6 @@
             </div>
             <span class="chip" id="session-chip">Offline</span>
           </div>
-          <label for="backend-url">Backend URL</label>
-          <input id="backend-url" placeholder="https://my-market.example.com" />
-          <div class="inline-group">
-            <button class="secondary" onclick="applyBackendUrl()">Connect</button>
-            <button class="secondary" onclick="refreshData()">Refresh</button>
-          </div>
           <label for="login-username">Username</label>
           <input id="login-username" placeholder="e.g. Alice" />
           <label for="login-password">Password</label>
@@ -318,13 +334,8 @@
               <div class="value" id="positions-count">–</div>
             </div>
           </div>
-            <div class="panel soft hidden" id="active-account">
-            <div class="label">Active account</div>
-            <div class="value" id="active-user-name">–</div>
-            <div class="small" id="share-link"></div>
-          </div>
         </div>
-        <div class="panel elevated">
+        <div class="panel elevated admin-panel">
           <div class="flex-between">
             <div>
               <h3>Admin console</h3>
@@ -377,6 +388,8 @@
         <div class="surface">
           <div class="tab-bar">
             <button class="tab-button active" id="tab-open-btn" onclick="switchTab('open')">Open markets</button>
+            <button class="tab-button" id="tab-positions-btn" onclick="switchTab('positions')">Open positions</button>
+            <button class="tab-button" id="tab-ledger-btn" onclick="switchTab('ledger')">Ledger</button>
             <button class="tab-button" id="tab-admin-btn" onclick="switchTab('admin')">Market admin</button>
           </div>
           <div id="tab-open" class="tab-content active">
@@ -402,25 +415,25 @@
             <div id="open-markets"></div>
             <div id="market-detail" class="panel"><div class="muted">Select a market to see details</div></div>
           </div>
+          <div id="tab-positions" class="tab-content">
+            <div class="flex-between">
+              <h2>Your open positions</h2>
+              <span class="chip ghost" id="positions-chip">0</span>
+            </div>
+            <div class="bets-list" id="positions"></div>
+          </div>
+          <div id="tab-ledger" class="tab-content">
+            <div class="flex-between">
+              <h2>Ledger history</h2>
+              <span class="chip ghost" id="balance-chip">–</span>
+            </div>
+            <div class="ledger-list" id="ledger"></div>
+          </div>
           <div id="tab-admin" class="tab-content">
             <h2>Market admin</h2>
             <div class="muted">Manage the markets you created. You can resolve, delete or open their details.</div>
             <div id="admin-markets"></div>
           </div>
-        </div>
-        <div class="panel elevated">
-          <div class="flex-between">
-            <h3>Open positions</h3>
-            <span class="chip ghost" id="positions-chip">0</span>
-          </div>
-          <div class="bets-list" id="positions"></div>
-        </div>
-        <div class="panel elevated">
-          <div class="flex-between">
-            <h3>Ledger</h3>
-            <span class="chip ghost" id="balance-chip">–</span>
-          </div>
-          <div class="ledger-list" id="ledger"></div>
         </div>
       </section>
     </main>
@@ -453,21 +466,7 @@
       let createFormOpen = false;
       let adminSession = { username: '', password: '', authenticated: false };
       let adminDirectory = [];
-      const initialUserFromQuery = Number(new URLSearchParams(window.location.search).get('user_id') || '');
-
-      function applyBackendUrl() {
-        const input = document.getElementById('backend-url');
-        const value = (input.value || '').trim().replace(/\/$/, '');
-        if (!value) return alert('Enter a backend URL');
-        apiBase = value;
-        localStorage.setItem('apiBase', apiBase);
-        refreshData();
-      }
-
-      function updateBackendInput() {
-        const input = document.getElementById('backend-url');
-        if (input) input.value = apiBase;
-      }
+      let initialUserFromQuery = Number(new URLSearchParams(window.location.search).get('user_id') || '');
 
       function switchTab(tab) {
         document.querySelectorAll('.tab-button').forEach((btn) => btn.classList.remove('active'));
@@ -488,6 +487,29 @@
         if (!userId || !password) return;
         savedPasswords[userId] = password;
         persistPasswords();
+      }
+
+      function clearSessionArtifacts() {
+        sessionStorage.removeItem('activeUserId');
+        sessionStorage.removeItem('activeUserName');
+        localStorage.removeItem('activeUserId');
+        localStorage.removeItem('activeUserName');
+
+        const url = new URL(window.location.href);
+        if (url.searchParams.has('user_id')) {
+          url.searchParams.delete('user_id');
+          window.history.replaceState({}, '', url);
+        }
+
+        initialUserFromQuery = null;
+
+        if (document.cookie) {
+          document.cookie.split(';').forEach((cookie) => {
+            const eqPos = cookie.indexOf('=');
+            const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+            document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+          });
+        }
       }
 
       function adminHeaders() {
@@ -535,22 +557,28 @@
           document.getElementById('session-status').textContent = 'Admin session active. User access disabled.';
           alert('Admin controls unlocked.');
           await refreshActiveUser();
-          switchTab('admin');
           return;
         }
         logoutAdmin();
-        const user = users.find((u) => u.name.toLowerCase() === username.toLowerCase());
-        if (!user) return alert('No user found with that username. Ask the admin to create an account.');
-        setUserPassword(user.id, password);
-        setActiveUser(user);
+        let authUser;
+        try {
+          authUser = await fetchJSON('/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ name: username, password }),
+          });
+        } catch (err) {
+          alert(err.message || 'Login failed');
+          return;
+        }
+        setUserPassword(authUser.id, password);
+        setActiveUser(authUser);
         renderSessionHeader();
       }
 
       function logoutUser(updateUi = true) {
         activeUserId = null;
         activeUserName = '';
-        sessionStorage.removeItem('activeUserId');
-        sessionStorage.removeItem('activeUserName');
+        clearSessionArtifacts();
         document.getElementById('login-password').value = '';
         renderSessionHeader();
         if (updateUi) refreshActiveUser();
@@ -565,6 +593,7 @@
       function logoutSession() {
         logoutAdmin();
         logoutUser();
+        switchTab('open');
       }
 
       function updateAdminStatus() {
@@ -839,18 +868,6 @@
         await refreshActiveUser();
       }
 
-      async function complain(marketId) {
-        const userId = getActiveUserId();
-        if (!userId) return alert('Log in to file a complaint.');
-        const reason = prompt('Reason for complaint');
-        if (!reason) return;
-        await fetchJSON(`/markets/${marketId}/complain?user_id=${userId}`, {
-          method: 'POST',
-          body: JSON.stringify({ reason }),
-        });
-        alert('Complaint recorded');
-      }
-
       function getActiveUserId() {
         return activeUserId;
       }
@@ -859,8 +876,7 @@
         if (!user) {
           activeUserId = null;
           activeUserName = '';
-          sessionStorage.removeItem('activeUserId');
-          sessionStorage.removeItem('activeUserName');
+          clearSessionArtifacts();
         } else {
           activeUserId = user.id;
           activeUserName = user.name;
@@ -869,18 +885,6 @@
         }
         renderSessionHeader();
         refreshActiveUser();
-      }
-
-      function updateShareLink() {
-        const userId = getActiveUserId();
-        const linkContainer = document.getElementById('share-link');
-        if (!linkContainer) return;
-        if (!userId) {
-          linkContainer.textContent = 'Log in to generate a shareable link for this account.';
-          return;
-        }
-        const url = `${window.location.origin}${window.location.pathname}?user_id=${userId}`;
-        linkContainer.textContent = `Share this link to reuse the same account on another device: ${url}`;
       }
 
       function userName(userId) {
@@ -906,7 +910,6 @@
         }
         renderSessionHeader();
         await refreshActiveUser();
-        updateShareLink();
         renderAdminUserSelect();
       }
 
@@ -914,10 +917,8 @@
         const userId = getActiveUserId();
         const appShell = document.getElementById('app-shell');
         const logoutBtn = document.getElementById('logout-btn');
-        const activeNameEl = document.getElementById('active-user-name');
         const menuNameEl = document.getElementById('menu-user-name');
         const sessionStatus = document.getElementById('session-status');
-        const activeCard = document.getElementById('active-account');
         if (!userId) {
           document.getElementById('balance').textContent = '–';
           document.getElementById('positions-count').textContent = '–';
@@ -928,32 +929,26 @@
           selectedMarket = null;
           renderMarketDetail(null);
           renderAdminMarkets();
-          updateShareLink();
           if (appShell) appShell.classList.add('hidden');
           if (logoutBtn) logoutBtn.disabled = true;
-          if (activeNameEl) activeNameEl.textContent = '–';
           if (menuNameEl) menuNameEl.textContent = '–';
           if (sessionStatus)
             sessionStatus.textContent = adminSession.authenticated
               ? 'Admin session active. User access disabled.'
               : 'Waiting for login.';
-          if (activeCard) activeCard.classList.add('hidden');
           renderSessionHeader();
           return;
         }
         const user = await fetchJSON(`/users/${userId}`);
         document.getElementById('balance').textContent = `${user.balance.toFixed(2)} €`;
         document.getElementById('balance-chip').textContent = `${user.balance.toFixed(2)} €`;
-        if (activeNameEl) activeNameEl.textContent = user.name;
         if (menuNameEl) menuNameEl.textContent = user.name;
         if (sessionStatus) sessionStatus.textContent = `Logged in as ${user.name}.`;
-        if (activeCard) activeCard.classList.remove('hidden');
         await loadLedger(userId);
         await loadPositions(userId);
         renderAdminMarkets();
         sessionStorage.setItem('activeUserId', String(userId));
         sessionStorage.setItem('activeUserName', activeUserName);
-        updateShareLink();
         if (appShell) appShell.classList.remove('hidden');
         if (logoutBtn) logoutBtn.disabled = false;
         renderSessionHeader();
@@ -997,9 +992,9 @@
 
       function renderOddsChart(history = []) {
         if (!history.length) return '<div class="muted">No price history yet</div>';
-        const width = 320;
-        const height = 160;
-        const padding = 24;
+        const width = 520;
+        const height = 240;
+        const padding = 32;
         const points = history.map((h, idx) => ({
           x: (idx / Math.max(history.length - 1, 1)) * (width - padding * 2) + padding,
           y: height - (h.price_yes * (height - padding * 2) + padding),
@@ -1012,6 +1007,12 @@
           <div class="chart">
             <div class="flex-between small"><span>YES price</span><span>${(latest.price_yes * 100).toFixed(1)}%</span></div>
             <svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}">
+              <defs>
+                <linearGradient id="lineGradient" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.5" />
+                  <stop offset="100%" stop-color="#2563eb" stop-opacity="0" />
+                </linearGradient>
+              </defs>
               ${grid
                 .map(
                   (g) =>
@@ -1021,17 +1022,23 @@
                 .join('')}
               <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="#334155" stroke-width="1" />
               <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" stroke="#334155" stroke-width="1" />
-              <polyline fill="none" stroke="#3b82f6" stroke-width="2" points="${points
+              <polyline
+                fill="url(#lineGradient)"
+                stroke="none"
+                points="${[`${padding},${height - padding}`, ...points.map((p) => `${p.x},${p.y}`), `${width - padding},${height - padding}`].join(' ')}"
+                opacity="0.7"
+              />
+              <polyline fill="none" stroke="#38bdf8" stroke-width="2.5" points="${points
                 .map((p) => `${p.x},${p.y}`)
                 .join(' ')}" />
               ${points
                 .map(
-                  (p) => `<circle cx="${p.x}" cy="${p.y}" r="2.5" fill="#38bdf8" /> <text x="${p.x + 4}" y="${p.y -
-                    4}" class="small" fill="#94a3b8">${(p.prob * 100).toFixed(0)}%</text>`
+                  (p) => `<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="#38bdf8" stroke="#0ea5e9" stroke-width="1.2" /> <text x="${p.x + 6}" y="${p.y -
+                    6}" class="small" fill="#cbd5e1">${(p.prob * 100).toFixed(0)}%</text>`
                 )
                 .join('')}
-              <text x="${width - padding}" y="${height - padding + 16}" text-anchor="end" class="small" fill="#94a3b8">time →</text>
-              <text x="${padding - 10}" y="${padding - 8}" text-anchor="end" class="small" fill="#94a3b8">prob</text>
+              <text x="${width - padding}" y="${height - padding + 18}" text-anchor="end" class="small" fill="#cbd5e1">time →</text>
+              <text x="${padding - 12}" y="${padding - 10}" text-anchor="end" class="small" fill="#cbd5e1">prob</text>
             </svg>
           </div>
         `;
@@ -1118,6 +1125,11 @@
 
       async function selectMarket(id, focusTab = true) {
         if (focusTab) switchTab('open');
+        if (selectedMarket && selectedMarket.id === id) {
+          selectedMarket = null;
+          renderMarketDetail(null);
+          return;
+        }
         selectedMarket = await fetchJSON(`/markets/${id}`);
         renderMarketDetail(selectedMarket);
       }
@@ -1136,7 +1148,6 @@
             ? `
                 <button class="secondary" onclick="resolveMarket(${market.id}, 'YES')">Resolve YES</button>
                 <button class="secondary" onclick="resolveMarket(${market.id}, 'NO')">Resolve NO</button>
-                <button class="secondary" onclick="resolveMarket(${market.id}, 'INVALID')">Invalidate</button>
                 <button class="secondary" onclick="deleteMarket(${market.id})">Delete & clear</button>
               `
             : '';
@@ -1181,7 +1192,6 @@
               <div>
                 <strong>${market.question}</strong>
                 <div class="small">${market.description || ''}</div>
-                <div class="small">Resolution source: ${market.resolution_source || '–'}</div>
                 <div class="small">Created by: ${market.creator_name || userName(market.creator_id)}</div>
               </div>
               ${marketStatusTag(market)}
@@ -1209,7 +1219,6 @@
             <div class="market-actions">
               ${betButtons}
               ${adminControls}
-              <button class="secondary" onclick="complain(${market.id})">Complain</button>
             </div>
             <div class="ledger-list">${renderMarketLedger(market)}</div>
           </div>
@@ -1245,7 +1254,6 @@
                       ? `
                           <button class="secondary" onclick="resolveMarket(${m.id}, 'YES')">Resolve YES</button>
                           <button class="secondary" onclick="resolveMarket(${m.id}, 'NO')">Resolve NO</button>
-                          <button class="secondary" onclick="resolveMarket(${m.id}, 'INVALID')">Invalidate</button>
                         `
                       : '<span class="muted">Resolution complete</span>';
                   })()}
@@ -1277,7 +1285,7 @@
       async function init() {
         renderSessionHeader();
         updateAdminStatus();
-        updateBackendInput();
+        switchTab('open');
         renderAdminDirectory();
         await refreshData();
       }
