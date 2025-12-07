@@ -133,6 +133,9 @@
       .small { font-size: 12px; color: #94a3b8; }
       .flex { display: flex; gap: 8px; align-items: center; }
       .flex-between { display: flex; justify-content: space-between; align-items: center; }
+      .chart { background: #0b1221; border: 1px solid #1f2937; border-radius: 8px; padding: 8px; }
+      .warning { background: #3f1f1f; border: 1px solid #7f1d1d; padding: 8px 10px; border-radius: 8px; color: #fecaca; }
+      .muted { color: #94a3b8; font-size: 12px; }
     </style>
   </head>
   <body>
@@ -235,10 +238,19 @@
       async function placeBet(marketId, side) {
         const userId = getActiveUserId();
         if (!userId) return alert('Pick a user to bet');
-        await fetchJSON(`/markets/${marketId}/bet?user_id=${userId}`, {
-          method: 'POST',
-          body: JSON.stringify({ side }),
-        });
+        try {
+          await fetchJSON(`/markets/${marketId}/bet?user_id=${userId}`, {
+            method: 'POST',
+            body: JSON.stringify({ side }),
+          });
+        } catch (err) {
+          if (err.message && err.message.toLowerCase().includes('quickly')) {
+            alert('Please wait 5 seconds between bets on the same market.');
+          } else {
+            alert(err.message || 'Bet failed');
+          }
+          return;
+        }
         await loadMarkets();
         await refreshActiveUser();
       }
@@ -307,32 +319,91 @@
         return `<span class="tag">${m.status}</span>`;
       }
 
+      function renderOddsChart(history = []) {
+        if (!history.length) return '<div class="muted">No price history yet</div>';
+        const width = 240;
+        const height = 80;
+        const padding = 6;
+        const points = history.map((h, idx) => ({
+          x: (idx / Math.max(history.length - 1, 1)) * (width - padding * 2) + padding,
+          y: height - (h.price_yes * (height - padding * 2) + padding),
+        }));
+        const latest = history[history.length - 1];
+        return `
+          <div class="chart">
+            <div class="flex-between small"><span>Implied YES odds</span><span>${(latest.price_yes * 100).toFixed(1)}%</span></div>
+            <svg width="100%" height="80" viewBox="0 0 ${width} ${height}">
+              <polyline fill="none" stroke="#3b82f6" stroke-width="2" points="${points
+                .map((p) => `${p.x},${p.y}`)
+                .join(' ')}" />
+            </svg>
+          </div>
+        `;
+      }
+
+      function renderWaitMessage(market) {
+        if (!market.last_bet_at || market.status !== 'OPEN') return '';
+        const elapsed = (Date.now() - new Date(market.last_bet_at).getTime()) / 1000;
+        const remaining = Math.max(0, 5 - elapsed);
+        if (remaining <= 0) return '';
+        return `<div class="warning">Please wait ${remaining.toFixed(1)}s before betting again on this market.</div>`;
+      }
+
+      function renderMarketLedger(market) {
+        if (!market.bets || !market.bets.length) return '<div class="muted">No bets yet</div>';
+        return market.bets
+          .map(
+            (b) => `
+              <div class="list-row small">
+                <div class="flex-between"><span class="pill">${b.side}</span><span>${new Date(b.placed_at).toLocaleString()}</span></div>
+                <div>Stake: ${b.cost.toFixed(2)}€ | Shares: ${b.shares.toFixed(4)} | Implied odds: ${(b.implied_odds * 100).toFixed(1)}%</div>
+              </div>
+            `,
+          )
+          .join('');
+      }
+
       async function loadMarkets() {
         const markets = await fetchJSON('/markets');
+        const marketDetails = await Promise.all(markets.map((m) => fetchJSON(`/markets/${m.id}`)));
+        const activeUserId = getActiveUserId();
         const container = document.getElementById('markets');
-        container.innerHTML = markets
+        container.innerHTML = marketDetails
           .map(
-            (m) => `
-            <div class="market-card">
-              <div class="flex-between">
-                <div><strong>${m.question}</strong><div class="small">${m.description || ''}</div></div>
-                ${marketStatusTag(m)}
-              </div>
-              <div class="flex" style="flex-wrap: wrap; gap:12px;">
-                <div class="metric"><div class="label">YES prob</div><div class="value">${(m.price_yes * 100).toFixed(1)}%</div></div>
-                <div class="metric"><div class="label">NO prob</div><div class="value">${(m.price_no * 100).toFixed(1)}%</div></div>
-              </div>
-              <div class="market-actions">
-                <button onclick="placeBet(${m.id}, 'YES')">Bet 1€ YES</button>
-                <button onclick="placeBet(${m.id}, 'NO')">Bet 1€ NO</button>
-                <button class="secondary" onclick="resolveMarket(${m.id}, 'YES')">Resolve YES</button>
-                <button class="secondary" onclick="resolveMarket(${m.id}, 'NO')">Resolve NO</button>
-                <button class="secondary" onclick="resolveMarket(${m.id}, 'INVALID')">Invalidate</button>
-                <button class="secondary" onclick="complain(${m.id})">Complain</button>
-              </div>
-              <div class="small">Creator: ${m.creator_id} | Liquidity b: ${m.liquidity_b}</div>
-            </div>
-          `,
+            (m) => {
+              const adminControls =
+                activeUserId && Number(activeUserId) === m.creator_id
+                  ? `
+                    <button class="secondary" onclick="resolveMarket(${m.id}, 'YES')">Resolve YES</button>
+                    <button class="secondary" onclick="resolveMarket(${m.id}, 'NO')">Resolve NO</button>
+                    <button class="secondary" onclick="resolveMarket(${m.id}, 'INVALID')">Invalidate</button>
+                  `
+                  : '';
+              const waitMsg = renderWaitMessage(m);
+              return `
+                <div class="market-card">
+                  <div class="flex-between">
+                    <div><strong>${m.question}</strong><div class="small">${m.description || ''}</div></div>
+                    ${marketStatusTag(m)}
+                  </div>
+                  <div class="flex" style="flex-wrap: wrap; gap:12px;">
+                    <div class="metric"><div class="label">YES prob</div><div class="value">${(m.price_yes * 100).toFixed(1)}%</div></div>
+                    <div class="metric"><div class="label">NO prob</div><div class="value">${(m.price_no * 100).toFixed(1)}%</div></div>
+                  </div>
+                  ${renderOddsChart(m.odds_history)}
+                  ${waitMsg}
+                  <div class="market-actions">
+                    <button onclick="placeBet(${m.id}, 'YES')">Bet 1€ YES</button>
+                    <button onclick="placeBet(${m.id}, 'NO')">Bet 1€ NO</button>
+                    ${adminControls}
+                    <button class="secondary" onclick="complain(${m.id})">Complain</button>
+                  </div>
+                  <div class="small">Creator: ${m.creator_id} | Liquidity b: ${m.liquidity_b}</div>
+                  <div class="small">Volume YES: ${m.volume_yes.toFixed(2)}€ | Volume NO: ${m.volume_no.toFixed(2)}€ | Total: ${(m.volume_yes + m.volume_no).toFixed(2)}€</div>
+                  <div class="ledger-list">${renderMarketLedger(m)}</div>
+                </div>
+              `;
+            },
           )
           .join('');
       }

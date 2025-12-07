@@ -8,6 +8,14 @@ from pydantic import BaseModel, Field
 from .models import MarketStatus
 
 
+class OddsPoint(BaseModel):
+    timestamp: datetime
+    price_yes: float
+    price_no: float
+    side: Optional[str] = None
+    user_id: Optional[int] = None
+
+
 class UserCreate(BaseModel):
     name: str
 
@@ -54,6 +62,7 @@ class MarketRead(BaseModel):
     creator_id: int
     price_yes: float
     price_no: float
+    last_bet_at: Optional[datetime]
 
     class Config:
         from_attributes = True
@@ -87,6 +96,9 @@ class ResolutionRequest(BaseModel):
 
 class MarketWithBets(MarketRead):
     bets: list[BetRead]
+    odds_history: list[OddsPoint]
+    volume_yes: float
+    volume_no: float
 
 
 class PositionRead(BaseModel):

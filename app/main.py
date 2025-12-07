@@ -22,6 +22,7 @@ from .schemas import (
     MarketCreate,
     MarketRead,
     MarketWithBets,
+    OddsPoint,
     PositionRead,
     ResolutionRequest,
     UserCreate,
@@ -192,8 +193,10 @@ def get_market(market_id: int, session: Session = Depends(get_session)) -> Marke
         raise HTTPException(status_code=404, detail="Market not found")
     market_data = market_read(market)
     bets = session.exec(select(Bet).where(Bet.market_id == market_id)).all()
-    market_data.bets = bets
-    return market_data
+    odds_history = compute_odds_history(market, bets)
+    volume_yes = sum(b.cost for b in bets if b.side.upper() == "YES")
+    volume_no = sum(b.cost for b in bets if b.side.upper() == "NO")
+    return MarketWithBets(**market_data.dict(), bets=bets, odds_history=odds_history, volume_yes=volume_yes, volume_no=volume_no)
 
 
 @app.post("/markets/{market_id}/bet", response_model=BetRead, status_code=status.HTTP_201_CREATED)
@@ -296,7 +299,25 @@ def market_read(market: Market) -> MarketRead:
         creator_id=market.creator_id,
         price_yes=price,
         price_no=1 - price,
+        last_bet_at=market.last_bet_at,
     )
+
+
+def compute_odds_history(market: Market, bets: list[Bet]) -> list[OddsPoint]:
+    q_yes, q_no = amm.initial_q_values(market.initial_prob_yes, subsidy=10.0, b=market.liquidity_b)
+    history: list[OddsPoint] = []
+
+    initial_price = amm.price_yes(q_yes, q_no, market.liquidity_b)
+    history.append(
+        OddsPoint(timestamp=market.created_at, price_yes=initial_price, price_no=1 - initial_price, side=None, user_id=None)
+    )
+
+    for bet in sorted(bets, key=lambda b: b.placed_at):
+        q_yes, q_no = amm.shares_for_cost(bet.cost, bet.side, q_yes, q_no, market.liquidity_b)
+        price = amm.price_yes(q_yes, q_no, market.liquidity_b)
+        history.append(OddsPoint(timestamp=bet.placed_at, price_yes=price, price_no=1 - price, side=bet.side, user_id=bet.user_id))
+
+    return history
 
 
 def pay_winners(session: Session, market: Market, outcome: str) -> None:
