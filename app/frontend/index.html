@@ -224,6 +224,19 @@
         border-radius: 12px;
         padding: 12px;
       }
+      .inline-group {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .inline-group > input,
+      .inline-group > button {
+        width: auto;
+        flex: 1;
+      }
+      .inline-group > button {
+        flex: 0 0 auto;
+      }
     </style>
   </head>
   <body>
@@ -233,10 +246,26 @@
     <main>
       <section>
         <h2>Accounts</h2>
+        <h3>Backend connection</h3>
+        <label for="backend-url">Backend URL</label>
+        <input id="backend-url" placeholder="https://my-market.example.com" />
+        <div class="inline-group">
+          <button class="secondary" onclick="applyBackendUrl()">Connect to backend</button>
+          <button class="secondary" onclick="refreshData()">Refresh data</button>
+        </div>
+        <hr />
         <label for="new-user-name">New user name</label>
         <input id="new-user-name" placeholder="Alice" />
         <button onclick="createUser()">Create user (starts with 50€)</button>
         <button class="secondary" onclick="resetPlatform()">Reset platform (delete all users)</button>
+        <hr />
+        <h3>Account sync</h3>
+        <label for="existing-user-id">Load existing user by ID</label>
+        <div class="inline-group">
+          <input id="existing-user-id" type="number" min="1" placeholder="123" />
+          <button class="secondary" onclick="useExistingUser()">Set active user</button>
+        </div>
+        <div class="muted" id="share-link"></div>
         <hr />
         <label for="active-user">Active user</label>
         <select id="active-user" onchange="refreshActiveUser()"></select>
@@ -291,10 +320,26 @@
       </section>
     </main>
     <script>
-      const apiBase = window.location.origin;
+      const storedBackend = localStorage.getItem('apiBase');
+      let apiBase = (storedBackend || window.location.origin).replace(/\/$/, '');
       let users = [];
       let markets = [];
       let selectedMarket = null;
+      const initialUserFromQuery = Number(new URLSearchParams(window.location.search).get('user_id') || '');
+
+      function applyBackendUrl() {
+        const input = document.getElementById('backend-url');
+        const value = (input.value || '').trim().replace(/\/$/, '');
+        if (!value) return alert('Enter a backend URL');
+        apiBase = value;
+        localStorage.setItem('apiBase', apiBase);
+        refreshData();
+      }
+
+      function updateBackendInput() {
+        const input = document.getElementById('backend-url');
+        if (input) input.value = apiBase;
+      }
 
       function switchTab(tab) {
         document.querySelectorAll('.tab-button').forEach((btn) => btn.classList.remove('active'));
@@ -366,6 +411,7 @@
         const userId = getActiveUserId();
         if (!userId) return alert('Pick a user to bet');
         try {
+          await ensureOddsInSync(marketId);
           await fetchJSON(`/markets/${marketId}/bet?user_id=${userId}`, {
             method: 'POST',
             body: JSON.stringify({ side }),
@@ -377,6 +423,22 @@
         await loadMarkets();
         await refreshActiveUser();
         await selectMarket(marketId, false);
+      }
+
+      async function ensureOddsInSync(marketId) {
+        const latest = await fetchJSON(`/markets/${marketId}`);
+        const displayed = markets.find((m) => m.id === marketId) || selectedMarket;
+        if (displayed) {
+          const oddsChanged =
+            Math.abs((displayed.price_yes || 0) - (latest.price_yes || 0)) > 0.0001 ||
+            Math.abs((displayed.price_no || 0) - (latest.price_no || 0)) > 0.0001;
+          if (oddsChanged) {
+            alert('The odds changed since your last refresh. Updating the page to prevent mis-priced bets.');
+            await refreshData();
+            throw new Error('Odds out of sync');
+          }
+        }
+        return latest;
       }
 
       async function resolveMarket(marketId, outcome) {
@@ -413,6 +475,25 @@
         return select.value ? Number(select.value) : null;
       }
 
+      function setActiveUserId(userId) {
+        const select = document.getElementById('active-user');
+        if (!select) return;
+        select.value = userId;
+        refreshActiveUser();
+      }
+
+      function updateShareLink() {
+        const userId = getActiveUserId();
+        const linkContainer = document.getElementById('share-link');
+        if (!linkContainer) return;
+        if (!userId) {
+          linkContainer.textContent = 'Pick a user to generate a shareable link.';
+          return;
+        }
+        const url = `${window.location.origin}${window.location.pathname}?user_id=${userId}`;
+        linkContainer.textContent = `Share this link to reuse the same account on another device: ${url}`;
+      }
+
       function userName(userId) {
         const user = users.find((u) => u.id === userId);
         return user ? user.name : `User ${userId}`;
@@ -420,6 +501,7 @@
 
       async function loadUsers() {
         const current = getActiveUserId();
+        const preferred = current || Number(localStorage.getItem('activeUserId') || initialUserFromQuery || '');
         users = await fetchJSON('/users');
         const select = document.getElementById('active-user');
         select.innerHTML = '<option value="">Select user</option>';
@@ -431,10 +513,13 @@
         });
         if (current && users.some((u) => u.id === current)) {
           select.value = current;
+        } else if (preferred && users.some((u) => u.id === preferred)) {
+          select.value = preferred;
         } else if (!select.value && users.length) {
           select.value = users[0].id;
         }
         await refreshActiveUser();
+        updateShareLink();
       }
 
       async function refreshActiveUser() {
@@ -445,6 +530,23 @@
         await loadLedger(userId);
         await loadPositions(userId);
         renderAdminMarkets();
+        localStorage.setItem('activeUserId', String(userId));
+        updateShareLink();
+      }
+
+      async function useExistingUser() {
+        const input = document.getElementById('existing-user-id');
+        const userId = Number((input.value || '').trim());
+        if (!userId) return alert('Enter a valid user ID');
+        try {
+          const user = await fetchJSON(`/users/${userId}`);
+          if (!users.some((u) => u.id === user.id)) {
+            users.push(user);
+          }
+          setActiveUserId(user.id);
+        } catch (err) {
+          alert('Could not load that user. Make sure the ID exists on this backend.');
+        }
       }
 
       async function loadLedger(userId) {
@@ -731,18 +833,13 @@
       }
 
       async function init() {
+        updateBackendInput();
+        await refreshData();
+      }
+
+      async function refreshData() {
         await loadUsers();
         await loadMarkets();
-        let refreshing = false;
-        setInterval(async () => {
-          if (refreshing) return;
-          refreshing = true;
-          try {
-            await Promise.all([loadMarkets(), refreshActiveUser()]);
-          } finally {
-            refreshing = false;
-          }
-        }, 5000);
       }
 
       init();
