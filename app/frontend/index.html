@@ -72,6 +72,7 @@
         border: none;
         font-weight: 700;
         transition: transform 0.08s ease, box-shadow 0.08s ease;
+        text-align: left;
       }
       button:hover {
         transform: translateY(-1px);
@@ -153,6 +154,12 @@
       .success {
         background: #064e3b;
         border: 1px solid #10b981;
+      }
+      .button-sub {
+        display: block;
+        font-weight: 500;
+        font-size: 12px;
+        opacity: 0.9;
       }
       .small {
         font-size: 12px;
@@ -285,6 +292,7 @@
     </main>
     <script>
       const apiBase = window.location.origin;
+      let users = [];
       let markets = [];
       let selectedMarket = null;
 
@@ -363,11 +371,7 @@
             body: JSON.stringify({ side }),
           });
         } catch (err) {
-          if (err.message && err.message.toLowerCase().includes('quickly')) {
-            alert('Please wait 5 seconds between bets on the same market.');
-          } else {
-            alert(err.message || 'Bet failed');
-          }
+          alert(err.message || 'Bet failed');
           return;
         }
         await loadMarkets();
@@ -409,9 +413,14 @@
         return select.value ? Number(select.value) : null;
       }
 
+      function userName(userId) {
+        const user = users.find((u) => u.id === userId);
+        return user ? user.name : `User ${userId}`;
+      }
+
       async function loadUsers() {
         const current = getActiveUserId();
-        const users = await fetchJSON('/users');
+        users = await fetchJSON('/users');
         const select = document.getElementById('active-user');
         select.innerHTML = '<option value="">Select user</option>';
         users.forEach((u) => {
@@ -488,7 +497,7 @@
         const grid = [0.25, 0.5, 0.75];
         return `
           <div class="chart">
-            <div class="flex-between small"><span>Implied YES probability</span><span>${(latest.price_yes * 100).toFixed(1)}%</span></div>
+            <div class="flex-between small"><span>YES price</span><span>${(latest.price_yes * 100).toFixed(1)}%</span></div>
             <svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}">
               ${grid
                 .map(
@@ -515,14 +524,6 @@
         `;
       }
 
-      function renderWaitMessage(market) {
-        if (!market.last_bet_at || market.status !== 'OPEN') return '';
-        const elapsed = (Date.now() - new Date(market.last_bet_at).getTime()) / 1000;
-        const remaining = Math.max(0, 5 - elapsed);
-        if (remaining <= 0) return '';
-        return `<div class="warning">Please wait ${remaining.toFixed(1)}s before betting again on this market.</div>`;
-      }
-
       function renderMarketLedger(market) {
         if (!market.bets || !market.bets.length) return '<div class="muted">No bets yet</div>';
         return market.bets
@@ -530,9 +531,7 @@
             (b) => `
               <div class="list-row small">
                 <div class="flex-between"><span class="pill">${b.side}</span><span>${new Date(b.placed_at).toLocaleString()}</span></div>
-                <div>Stake: ${b.cost.toFixed(2)}€ | Shares: ${b.shares.toFixed(4)} | Implied probability: ${(b.implied_odds * 100).toFixed(
-              1
-            )}%</div>
+                <div>Stake: ${b.cost.toFixed(2)}€ | Shares: ${b.shares.toFixed(4)}</div>
               </div>
             `,
           )
@@ -545,7 +544,7 @@
           .map(
             (p) => `
               <div class="list-row small">
-                <div class="flex-between"><span class="pill">${p.entry_type}</span><span>User ${p.user_id}</span></div>
+                <div class="flex-between"><span class="pill">${p.entry_type}</span><span>${userName(p.user_id)}</span></div>
                 <div>${p.amount.toFixed(2)}€${p.note ? ` — ${p.note}` : ''}${outcome ? ` (Outcome: ${outcome})` : ''}</div>
               </div>
             `,
@@ -577,12 +576,14 @@
                   <div class="metric"><div class="label">YES prob</div><div class="value">${formatProbability(m.price_yes)}</div></div>
                   <div class="metric"><div class="label">NO prob</div><div class="value">${formatProbability(m.price_no)}</div></div>
                 </div>
-                <div class="small">1€ bet preview → YES payout: ${m.yes_preview.payout.toFixed(3)}€ (${formatProbability(
-              m.yes_preview.probability,
-            )}), NO payout: ${m.no_preview.payout.toFixed(3)}€ (${formatProbability(m.no_preview.probability)})</div>
+                <div class="small">1€ bet preview → YES wins: ${m.yes_preview.payout.toFixed(3)}€ | NO wins: ${m.no_preview.payout.toFixed(3)}€</div>
                 <div class="market-actions">
-                  <button onclick="placeBet(${m.id}, 'YES')">Bet 1€ YES</button>
-                  <button onclick="placeBet(${m.id}, 'NO')">Bet 1€ NO</button>
+                  <button onclick="placeBet(${m.id}, 'YES')" ${m.price_yes > 0.95 ? 'disabled' : ''}>
+                    Bet 1€ YES<span class="button-sub">${m.price_yes > 0.95 ? 'Locked above 95% YES' : `Win ${m.yes_preview.payout.toFixed(2)}€`}</span>
+                  </button>
+                  <button onclick="placeBet(${m.id}, 'NO')" ${m.price_yes < 0.05 ? 'disabled' : ''}>
+                    Bet 1€ NO<span class="button-sub">${m.price_yes < 0.05 ? 'Locked below 5% YES' : `Win ${m.no_preview.payout.toFixed(2)}€`}</span>
+                  </button>
                   <button class="secondary" onclick="selectMarket(${m.id})">View details</button>
                 </div>
               </div>
@@ -604,8 +605,9 @@
           return;
         }
         const activeUserId = getActiveUserId();
+        const canResolve = market.status !== 'RESOLVED' && market.status !== 'INVALID';
         const adminControls =
-          activeUserId && Number(activeUserId) === market.creator_id
+          activeUserId && Number(activeUserId) === market.creator_id && canResolve
             ? `
                 <button class="secondary" onclick="resolveMarket(${market.id}, 'YES')">Resolve YES</button>
                 <button class="secondary" onclick="resolveMarket(${market.id}, 'NO')">Resolve NO</button>
@@ -613,7 +615,15 @@
                 <button class="secondary" onclick="deleteMarket(${market.id})">Delete & clear</button>
               `
             : '';
-        const waitMsg = renderWaitMessage(market);
+        const yesLocked = market.price_yes > 0.95;
+        const noLocked = market.price_yes < 0.05;
+        const canBet = market.status === 'OPEN';
+        const betButtons = canBet
+          ? `
+              <button onclick="placeBet(${market.id}, 'YES')" ${yesLocked ? 'disabled' : ''}>Bet 1€ YES<span class="button-sub">${yesLocked ? 'Locked above 95% YES' : `Win ${market.yes_preview.payout.toFixed(2)}€`}</span></button>
+              <button onclick="placeBet(${market.id}, 'NO')" ${noLocked ? 'disabled' : ''}>Bet 1€ NO<span class="button-sub">${noLocked ? 'Locked below 5% YES' : `Win ${market.no_preview.payout.toFixed(2)}€`}</span></button>
+            `
+          : '<div class="muted">Betting is closed for this market.</div>';
         const resolutionPanel =
           market.status === 'RESOLVED' || market.status === 'INVALID'
             ? `
@@ -640,18 +650,14 @@
             <div class="metrics">
               <div class="metric"><div class="label">YES probability</div><div class="value">${formatProbability(market.price_yes)}</div></div>
               <div class="metric"><div class="label">NO probability</div><div class="value">${formatProbability(market.price_no)}</div></div>
-              <div class="metric"><div class="label">Created by</div><div class="value">User ${market.creator_id}</div></div>
+              <div class="metric"><div class="label">Created by</div><div class="value">${userName(market.creator_id)}</div></div>
               <div class="metric"><div class="label">Liquidity b</div><div class="value">${market.liquidity_b}</div></div>
             </div>
             <div class="detail-grid">
               <div class="panel">
                 <div class="label">1€ bet preview</div>
-                <div>YES: payout ${market.yes_preview.payout.toFixed(4)}€ — implied probability ${formatProbability(
-                  market.yes_preview.probability,
-                )}</div>
-                <div>NO: payout ${market.no_preview.payout.toFixed(4)}€ — implied probability ${formatProbability(
-                  market.no_preview.probability,
-                )}</div>
+                <div>YES: payout ${market.yes_preview.payout.toFixed(4)}€</div>
+                <div>NO: payout ${market.no_preview.payout.toFixed(4)}€</div>
               </div>
               <div class="panel">
                 <div class="label">Volume</div>
@@ -660,11 +666,9 @@
               </div>
             </div>
             ${renderOddsChart(market.odds_history)}
-            ${waitMsg}
             ${resolutionPanel}
             <div class="market-actions">
-              <button onclick="placeBet(${market.id}, 'YES')">Bet 1€ YES</button>
-              <button onclick="placeBet(${market.id}, 'NO')">Bet 1€ NO</button>
+              ${betButtons}
               ${adminControls}
               <button class="secondary" onclick="complain(${market.id})">Complain</button>
             </div>
@@ -696,9 +700,16 @@
                 <div class="small">YES: ${formatProbability(m.price_yes)} | NO: ${formatProbability(m.price_no)}</div>
                 <div class="market-actions">
                   <button class="secondary" onclick="selectMarket(${m.id})">View</button>
-                  <button class="secondary" onclick="resolveMarket(${m.id}, 'YES')">Resolve YES</button>
-                  <button class="secondary" onclick="resolveMarket(${m.id}, 'NO')">Resolve NO</button>
-                  <button class="secondary" onclick="resolveMarket(${m.id}, 'INVALID')">Invalidate</button>
+                  ${(() => {
+                    const canResolve = m.status !== 'RESOLVED' && m.status !== 'INVALID';
+                    return canResolve
+                      ? `
+                          <button class="secondary" onclick="resolveMarket(${m.id}, 'YES')">Resolve YES</button>
+                          <button class="secondary" onclick="resolveMarket(${m.id}, 'NO')">Resolve NO</button>
+                          <button class="secondary" onclick="resolveMarket(${m.id}, 'INVALID')">Invalidate</button>
+                        `
+                      : '<span class="muted">Resolution complete</span>';
+                  })()}
                   <button class="secondary" onclick="deleteMarket(${m.id})">Delete & clear</button>
                 </div>
               </div>
@@ -722,6 +733,16 @@
       async function init() {
         await loadUsers();
         await loadMarkets();
+        let refreshing = false;
+        setInterval(async () => {
+          if (refreshing) return;
+          refreshing = true;
+          try {
+            await Promise.all([loadMarkets(), refreshActiveUser()]);
+          } finally {
+            refreshing = false;
+          }
+        }, 5000);
       }
 
       init();
