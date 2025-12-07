@@ -40,6 +40,21 @@ def create_user(client: TestClient, name: str = "Alice") -> dict:
     return response.json()
 
 
+def test_auth_login_requires_correct_password(client: TestClient) -> None:
+    user = create_user(client)
+
+    bad_login = client.post(
+        "/auth/login", json={"name": user["name"], "password": "wrong"}
+    )
+    assert bad_login.status_code == 403
+
+    good_login = client.post(
+        "/auth/login", json={"name": user["name"], "password": user["password"]}
+    )
+    assert good_login.status_code == 200
+    assert good_login.json()["id"] == user["id"]
+
+
 def test_create_user_requires_admin(client: TestClient) -> None:
     response = client.post("/users", json={"name": "NoAdmin"})
     assert response.status_code == 401
