@@ -52,7 +52,8 @@ docs.
    ```bash
    fly volumes create data --size 1 --app prediction-market --region iad
    ```
-4. Deploy using the bundled Dockerfile:
+4. Deploy using the bundled Dockerfile (this repository already includes
+   `fly.toml`, so you do **not** need to run `fly launch`):
    ```bash
    flyctl deploy
    ```
@@ -64,6 +65,13 @@ docs.
 The included `fly.toml` mounts `/data` and sets `DATABASE_URL` to
 `sqlite:////data/prediction.db` with `RESET_DB_ON_STARTUP=false` so your data is
 kept between restarts.
+
+### Fly.io troubleshooting
+
+- If the CLI reports `launch manifest was created for a app, but this is a app`
+  while trying to generate a deployment plan, delete any previously generated
+  `.fly/` folder and rerun `flyctl deploy` (not `fly launch`) to rely on the
+  included `fly.toml`.
 
 ## Key API flows
 
