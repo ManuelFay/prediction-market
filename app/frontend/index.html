@@ -6,34 +6,43 @@
     <title>Friends Prediction Market</title>
     <style>
       :root {
-        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #0f172a;
+        font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: #0b1021;
         color: #e2e8f0;
       }
       body {
         margin: 0;
         padding: 0;
+        background: radial-gradient(circle at top left, rgba(59, 130, 246, 0.08), transparent 30%),
+          radial-gradient(circle at bottom right, rgba(16, 185, 129, 0.08), transparent 25%),
+          #0b1021;
       }
       header {
-        background: #111827;
-        padding: 16px 24px;
+        background: #0f172a;
+        padding: 18px 24px;
         border-bottom: 1px solid #1f2937;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+        position: sticky;
+        top: 0;
+        z-index: 10;
       }
       h1 {
         margin: 0;
         font-size: 22px;
       }
       main {
-        padding: 24px;
+        padding: 20px 24px 32px;
         display: grid;
         grid-template-columns: 320px 1fr;
         gap: 16px;
+        align-items: start;
       }
       section {
-        background: #111827;
+        background: rgba(15, 23, 42, 0.9);
         border: 1px solid #1f2937;
-        border-radius: 12px;
+        border-radius: 14px;
         padding: 16px;
+        backdrop-filter: blur(4px);
       }
       h2 {
         margin-top: 0;
@@ -44,11 +53,14 @@
         margin-bottom: 6px;
         font-weight: 600;
       }
-      input, select, textarea, button {
+      input,
+      select,
+      textarea,
+      button {
         width: 100%;
         padding: 10px;
         margin-bottom: 10px;
-        border-radius: 8px;
+        border-radius: 10px;
         border: 1px solid #1f2937;
         background: #0b1221;
         color: #e2e8f0;
@@ -59,14 +71,19 @@
         background: linear-gradient(90deg, #14b8a6, #3b82f6);
         border: none;
         font-weight: 700;
+        transition: transform 0.08s ease, box-shadow 0.08s ease;
+      }
+      button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 30px rgba(59, 130, 246, 0.25);
       }
       button.secondary {
-        background: #1f2937;
+        background: #111827;
         border: 1px solid #334155;
       }
       .metrics {
         display: grid;
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
         gap: 8px;
         margin-bottom: 10px;
       }
@@ -90,17 +107,18 @@
         display: grid;
         gap: 8px;
         padding: 12px;
-        border-radius: 10px;
+        border-radius: 12px;
         border: 1px solid #1f2937;
         background: #0b1221;
         margin-bottom: 12px;
       }
       .market-actions {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
         gap: 8px;
       }
-      .bets-list, .ledger-list {
+      .bets-list,
+      .ledger-list {
         max-height: 260px;
         overflow: auto;
         border: 1px solid #1f2937;
@@ -128,14 +146,77 @@
         background: #1e3a8a;
         display: inline-block;
       }
-      .danger { background: #7f1d1d; border: 1px solid #dc2626; }
-      .success { background: #064e3b; border: 1px solid #10b981; }
-      .small { font-size: 12px; color: #94a3b8; }
-      .flex { display: flex; gap: 8px; align-items: center; }
-      .flex-between { display: flex; justify-content: space-between; align-items: center; }
-      .chart { background: #0b1221; border: 1px solid #1f2937; border-radius: 8px; padding: 8px; }
-      .warning { background: #3f1f1f; border: 1px solid #7f1d1d; padding: 8px 10px; border-radius: 8px; color: #fecaca; }
-      .muted { color: #94a3b8; font-size: 12px; }
+      .danger {
+        background: #7f1d1d;
+        border: 1px solid #dc2626;
+      }
+      .success {
+        background: #064e3b;
+        border: 1px solid #10b981;
+      }
+      .small {
+        font-size: 12px;
+        color: #94a3b8;
+      }
+      .flex {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .flex-between {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .chart {
+        background: #0b1221;
+        border: 1px solid #1f2937;
+        border-radius: 10px;
+        padding: 10px;
+      }
+      .warning {
+        background: #3f1f1f;
+        border: 1px solid #7f1d1d;
+        padding: 8px 10px;
+        border-radius: 8px;
+        color: #fecaca;
+      }
+      .muted {
+        color: #94a3b8;
+        font-size: 12px;
+      }
+      .tab-bar {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .tab-button {
+        background: #111827;
+        border: 1px solid #1f2937;
+        color: #e2e8f0;
+      }
+      .tab-button.active {
+        background: linear-gradient(90deg, #0ea5e9, #6366f1);
+        border-color: #1d4ed8;
+      }
+      .tab-content {
+        display: none;
+      }
+      .tab-content.active {
+        display: block;
+      }
+      .detail-grid {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      }
+      .panel {
+        border: 1px solid #1f2937;
+        background: #0c1326;
+        border-radius: 12px;
+        padding: 12px;
+      }
     </style>
   </head>
   <body>
@@ -171,24 +252,47 @@
         <div class="ledger-list" id="ledger"></div>
       </section>
       <section>
-        <h2>Create market</h2>
-        <div class="flex-between small"><span>Seed: 10€ will be locked from creator.</span><span>Bet size: fixed 1€</span></div>
-        <label for="question">Question</label>
-        <input id="question" placeholder="YES if PSG beats OM?" />
-        <label for="description">Details</label>
-        <textarea id="description" placeholder="Resolution rules, notes"></textarea>
-        <label for="initial-prob">Initial probability for YES (0-1)</label>
-        <input id="initial-prob" type="number" step="0.01" value="0.5" />
-        <label for="liquidity-b">Liquidity b (controls slippage)</label>
-        <input id="liquidity-b" type="number" step="0.5" value="5" />
-        <button onclick="createMarket()">Create market</button>
-        <hr />
-        <h2>Markets</h2>
-        <div id="markets"></div>
+        <div class="tab-bar">
+          <button class="tab-button active" id="tab-create-btn" onclick="switchTab('create')">Create new market</button>
+          <button class="tab-button" id="tab-open-btn" onclick="switchTab('open')">Open markets</button>
+          <button class="tab-button" id="tab-admin-btn" onclick="switchTab('admin')">Market admin</button>
+        </div>
+        <div id="tab-create" class="tab-content active">
+          <h2>Create market</h2>
+          <div class="flex-between small"><span>Seed: 10€ will be locked from creator.</span><span>Bet size: fixed 1€</span></div>
+          <label for="question">Question</label>
+          <input id="question" placeholder="YES if PSG beats OM?" />
+          <label for="description">Details</label>
+          <textarea id="description" placeholder="Resolution rules, notes"></textarea>
+          <label for="initial-prob">Initial probability for YES (0-1)</label>
+          <input id="initial-prob" type="number" step="0.01" value="0.5" />
+          <label for="liquidity-b">Liquidity b (controls slippage)</label>
+          <input id="liquidity-b" type="number" step="0.5" value="5" />
+          <button onclick="createMarket()">Create market</button>
+        </div>
+        <div id="tab-open" class="tab-content">
+          <h2>Open markets</h2>
+          <div id="open-markets"></div>
+          <div id="market-detail" class="panel"></div>
+        </div>
+        <div id="tab-admin" class="tab-content">
+          <h2>Market admin</h2>
+          <div class="muted">Manage the markets you created. You can resolve, delete or open their details.</div>
+          <div id="admin-markets"></div>
+        </div>
       </section>
     </main>
     <script>
       const apiBase = window.location.origin;
+      let markets = [];
+      let selectedMarket = null;
+
+      function switchTab(tab) {
+        document.querySelectorAll('.tab-button').forEach((btn) => btn.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach((c) => c.classList.remove('active'));
+        document.getElementById(`tab-${tab}-btn`).classList.add('active');
+        document.getElementById(`tab-${tab}`).classList.add('active');
+      }
 
       async function fetchJSON(path, options = {}) {
         const res = await fetch(`${apiBase}${path}`, {
@@ -199,6 +303,7 @@
           const error = await res.json().catch(() => ({}));
           throw new Error(error.detail || 'Request failed');
         }
+        if (res.status === 204) return {};
         return res.json();
       }
 
@@ -233,6 +338,7 @@
         document.getElementById('description').value = '';
         await loadMarkets();
         await refreshActiveUser();
+        switchTab('open');
       }
 
       async function placeBet(marketId, side) {
@@ -253,10 +359,22 @@
         }
         await loadMarkets();
         await refreshActiveUser();
+        await selectMarket(marketId, false);
       }
 
       async function resolveMarket(marketId, outcome) {
         await fetchJSON(`/markets/${marketId}/resolve`, { method: 'POST', body: JSON.stringify({ outcome }) });
+        await loadMarkets();
+        await refreshActiveUser();
+        await selectMarket(marketId, false);
+      }
+
+      async function deleteMarket(marketId) {
+        const userId = getActiveUserId();
+        if (!userId) return alert('Pick a user to manage markets');
+        if (!confirm('Delete this market and refund everyone?')) return;
+        await fetchJSON(`/markets/${marketId}?user_id=${userId}`, { method: 'DELETE' });
+        selectedMarket = null;
         await loadMarkets();
         await refreshActiveUser();
       }
@@ -266,7 +384,10 @@
         if (!userId) return alert('Pick a user to complain');
         const reason = prompt('Reason for complaint');
         if (!reason) return;
-        await fetchJSON(`/markets/${marketId}/complain?user_id=${userId}`, { method: 'POST', body: JSON.stringify({ reason }) });
+        await fetchJSON(`/markets/${marketId}/complain?user_id=${userId}`, {
+          method: 'POST',
+          body: JSON.stringify({ reason }),
+        });
         alert('Complaint recorded');
       }
 
@@ -294,13 +415,19 @@
         document.getElementById('balance').textContent = `${user.balance.toFixed(2)} €`;
         await loadLedger(userId);
         await loadPositions(userId);
+        renderAdminMarkets();
       }
 
       async function loadLedger(userId) {
         const ledger = await fetchJSON(`/users/${userId}/ledger`);
         const container = document.getElementById('ledger');
         container.innerHTML = ledger
-          .map((e) => `<div class="list-row"><div class="flex-between"><span class="tag">${e.entry_type}</span><span>${new Date(e.created_at).toLocaleString()}</span></div><div>${e.amount.toFixed(2)} €${e.note ? ` — ${e.note}` : ''}</div></div>`)
+          .map(
+            (e) =>
+              `<div class="list-row"><div class="flex-between"><span class="tag">${e.entry_type}</span><span>${new Date(
+                e.created_at,
+              ).toLocaleString()}</span></div><div>${e.amount.toFixed(2)} €${e.note ? ` — ${e.note}` : ''}</div></div>`,
+          )
           .join('');
       }
 
@@ -309,7 +436,14 @@
         document.getElementById('positions-count').textContent = positions.length;
         const container = document.getElementById('positions');
         container.innerHTML = positions
-          .map((p) => `<div class="list-row"><div class="flex-between"><strong>${p.market_question}</strong><span class="tag">${p.market_status}</span></div><div>Side: <span class="pill">${p.side}</span></div><div>Shares: ${p.total_shares.toFixed(4)} | Stake: ${p.total_stake.toFixed(2)}€ | Avg odds: ${p.avg_odds.toFixed(2)} | Potential payout: ${p.potential_payout.toFixed(2)}€</div></div>`)
+          .map(
+            (p) =>
+              `<div class="list-row"><div class="flex-between"><strong>${p.market_question}</strong><span class="tag">${p.market_status}</span></div><div>Side: <span class="pill">${p.side}</span></div><div>Shares: ${p.total_shares.toFixed(
+                4,
+              )} | Stake: ${p.total_stake.toFixed(2)}€ | Avg probability: ${(p.avg_odds * 100).toFixed(
+                2,
+              )}% | Potential payout: ${p.potential_payout.toFixed(2)}€</div></div>`,
+          )
           .join('');
       }
 
@@ -321,21 +455,41 @@
 
       function renderOddsChart(history = []) {
         if (!history.length) return '<div class="muted">No price history yet</div>';
-        const width = 240;
-        const height = 80;
-        const padding = 6;
+        const width = 320;
+        const height = 160;
+        const padding = 24;
         const points = history.map((h, idx) => ({
           x: (idx / Math.max(history.length - 1, 1)) * (width - padding * 2) + padding,
           y: height - (h.price_yes * (height - padding * 2) + padding),
+          prob: h.price_yes,
+          ts: h.timestamp,
         }));
         const latest = history[history.length - 1];
+        const grid = [0.25, 0.5, 0.75];
         return `
           <div class="chart">
-            <div class="flex-between small"><span>Implied YES odds</span><span>${(latest.price_yes * 100).toFixed(1)}%</span></div>
-            <svg width="100%" height="80" viewBox="0 0 ${width} ${height}">
+            <div class="flex-between small"><span>Implied YES probability</span><span>${(latest.price_yes * 100).toFixed(1)}%</span></div>
+            <svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}">
+              ${grid
+                .map(
+                  (g) =>
+                    `<line x1="${padding}" x2="${width - padding}" y1="${height - (g * (height - padding * 2) + padding)}" y2="${height -
+                      (g * (height - padding * 2) + padding)}" stroke="#1f2937" stroke-dasharray="4 4" />`,
+                )
+                .join('')}
+              <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="#334155" stroke-width="1" />
+              <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" stroke="#334155" stroke-width="1" />
               <polyline fill="none" stroke="#3b82f6" stroke-width="2" points="${points
                 .map((p) => `${p.x},${p.y}`)
                 .join(' ')}" />
+              ${points
+                .map(
+                  (p) => `<circle cx="${p.x}" cy="${p.y}" r="2.5" fill="#38bdf8" /> <text x="${p.x + 4}" y="${p.y -
+                    4}" class="small" fill="#94a3b8">${(p.prob * 100).toFixed(0)}%</text>`
+                )
+                .join('')}
+              <text x="${width - padding}" y="${height - padding + 16}" text-anchor="end" class="small" fill="#94a3b8">time →</text>
+              <text x="${padding - 10}" y="${padding - 8}" text-anchor="end" class="small" fill="#94a3b8">prob</text>
             </svg>
           </div>
         `;
@@ -356,7 +510,149 @@
             (b) => `
               <div class="list-row small">
                 <div class="flex-between"><span class="pill">${b.side}</span><span>${new Date(b.placed_at).toLocaleString()}</span></div>
-                <div>Stake: ${b.cost.toFixed(2)}€ | Shares: ${b.shares.toFixed(4)} | Implied odds: ${(b.implied_odds * 100).toFixed(1)}%</div>
+                <div>Stake: ${b.cost.toFixed(2)}€ | Shares: ${b.shares.toFixed(4)} | Implied probability: ${(b.implied_odds * 100).toFixed(
+              1
+            )}%</div>
+              </div>
+            `,
+          )
+          .join('');
+      }
+
+      function formatProbability(p) {
+        return `${(p * 100).toFixed(1)}%`;
+      }
+
+      function renderOpenMarkets() {
+        const container = document.getElementById('open-markets');
+        const open = markets.filter((m) => m.status === 'OPEN');
+        if (!open.length) {
+          container.innerHTML = '<div class="muted">No open markets yet.</div>';
+          document.getElementById('market-detail').innerHTML = '';
+          return;
+        }
+        container.innerHTML = open
+          .map(
+            (m) => `
+              <div class="market-card">
+                <div class="flex-between">
+                  <div><strong>${m.question}</strong><div class="small">${m.description || ''}</div></div>
+                  ${marketStatusTag(m)}
+                </div>
+                <div class="metrics">
+                  <div class="metric"><div class="label">YES prob</div><div class="value">${formatProbability(m.price_yes)}</div></div>
+                  <div class="metric"><div class="label">NO prob</div><div class="value">${formatProbability(m.price_no)}</div></div>
+                </div>
+                <div class="small">1€ bet preview → YES payout: ${m.yes_preview.payout.toFixed(3)}€ (${formatProbability(
+              m.yes_preview.probability,
+            )}), NO payout: ${m.no_preview.payout.toFixed(3)}€ (${formatProbability(m.no_preview.probability)})</div>
+                <div class="market-actions">
+                  <button onclick="placeBet(${m.id}, 'YES')">Bet 1€ YES</button>
+                  <button onclick="placeBet(${m.id}, 'NO')">Bet 1€ NO</button>
+                  <button class="secondary" onclick="selectMarket(${m.id})">View details</button>
+                </div>
+              </div>
+            `,
+          )
+          .join('');
+      }
+
+      async function selectMarket(id, focusTab = true) {
+        if (focusTab) switchTab('open');
+        selectedMarket = await fetchJSON(`/markets/${id}`);
+        renderMarketDetail(selectedMarket);
+      }
+
+      function renderMarketDetail(market) {
+        const container = document.getElementById('market-detail');
+        if (!market) {
+          container.innerHTML = '<div class="muted">Select a market to see details</div>';
+          return;
+        }
+        const activeUserId = getActiveUserId();
+        const adminControls =
+          activeUserId && Number(activeUserId) === market.creator_id
+            ? `
+                <button class="secondary" onclick="resolveMarket(${market.id}, 'YES')">Resolve YES</button>
+                <button class="secondary" onclick="resolveMarket(${market.id}, 'NO')">Resolve NO</button>
+                <button class="secondary" onclick="resolveMarket(${market.id}, 'INVALID')">Invalidate</button>
+                <button class="secondary" onclick="deleteMarket(${market.id})">Delete & clear</button>
+              `
+            : '';
+        const waitMsg = renderWaitMessage(market);
+        container.innerHTML = `
+          <div class="market-card">
+            <div class="flex-between">
+              <div>
+                <strong>${market.question}</strong>
+                <div class="small">${market.description || ''}</div>
+                <div class="small">Resolution source: ${market.resolution_source || '–'}</div>
+              </div>
+              ${marketStatusTag(market)}
+            </div>
+            <div class="metrics">
+              <div class="metric"><div class="label">YES probability</div><div class="value">${formatProbability(market.price_yes)}</div></div>
+              <div class="metric"><div class="label">NO probability</div><div class="value">${formatProbability(market.price_no)}</div></div>
+              <div class="metric"><div class="label">Created by</div><div class="value">User ${market.creator_id}</div></div>
+              <div class="metric"><div class="label">Liquidity b</div><div class="value">${market.liquidity_b}</div></div>
+            </div>
+            <div class="detail-grid">
+              <div class="panel">
+                <div class="label">1€ bet preview</div>
+                <div>YES: payout ${market.yes_preview.payout.toFixed(4)}€ — implied probability ${formatProbability(
+                  market.yes_preview.probability,
+                )}</div>
+                <div>NO: payout ${market.no_preview.payout.toFixed(4)}€ — implied probability ${formatProbability(
+                  market.no_preview.probability,
+                )}</div>
+              </div>
+              <div class="panel">
+                <div class="label">Volume</div>
+                <div class="value">YES: ${market.volume_yes.toFixed(2)}€ | NO: ${market.volume_no.toFixed(2)}€ | Total: ${(market.volume_yes +
+          market.volume_no).toFixed(2)}€</div>
+              </div>
+            </div>
+            ${renderOddsChart(market.odds_history)}
+            ${waitMsg}
+            <div class="market-actions">
+              <button onclick="placeBet(${market.id}, 'YES')">Bet 1€ YES</button>
+              <button onclick="placeBet(${market.id}, 'NO')">Bet 1€ NO</button>
+              ${adminControls}
+              <button class="secondary" onclick="complain(${market.id})">Complain</button>
+            </div>
+            <div class="ledger-list">${renderMarketLedger(market)}</div>
+          </div>
+        `;
+      }
+
+      function renderAdminMarkets() {
+        const container = document.getElementById('admin-markets');
+        const activeUserId = getActiveUserId();
+        if (!activeUserId) {
+          container.innerHTML = '<div class="muted">Select a user to see their markets.</div>';
+          return;
+        }
+        const mine = markets.filter((m) => m.creator_id === Number(activeUserId));
+        if (!mine.length) {
+          container.innerHTML = '<div class="muted">No markets created yet.</div>';
+          return;
+        }
+        container.innerHTML = mine
+          .map(
+            (m) => `
+              <div class="market-card">
+                <div class="flex-between">
+                  <div><strong>${m.question}</strong><div class="small">${m.description || ''}</div></div>
+                  ${marketStatusTag(m)}
+                </div>
+                <div class="small">YES: ${formatProbability(m.price_yes)} | NO: ${formatProbability(m.price_no)}</div>
+                <div class="market-actions">
+                  <button class="secondary" onclick="selectMarket(${m.id})">View</button>
+                  <button class="secondary" onclick="resolveMarket(${m.id}, 'YES')">Resolve YES</button>
+                  <button class="secondary" onclick="resolveMarket(${m.id}, 'NO')">Resolve NO</button>
+                  <button class="secondary" onclick="resolveMarket(${m.id}, 'INVALID')">Invalidate</button>
+                  <button class="secondary" onclick="deleteMarket(${m.id})">Delete & clear</button>
+                </div>
               </div>
             `,
           )
@@ -364,48 +660,15 @@
       }
 
       async function loadMarkets() {
-        const markets = await fetchJSON('/markets');
-        const marketDetails = await Promise.all(markets.map((m) => fetchJSON(`/markets/${m.id}`)));
-        const activeUserId = getActiveUserId();
-        const container = document.getElementById('markets');
-        container.innerHTML = marketDetails
-          .map(
-            (m) => {
-              const adminControls =
-                activeUserId && Number(activeUserId) === m.creator_id
-                  ? `
-                    <button class="secondary" onclick="resolveMarket(${m.id}, 'YES')">Resolve YES</button>
-                    <button class="secondary" onclick="resolveMarket(${m.id}, 'NO')">Resolve NO</button>
-                    <button class="secondary" onclick="resolveMarket(${m.id}, 'INVALID')">Invalidate</button>
-                  `
-                  : '';
-              const waitMsg = renderWaitMessage(m);
-              return `
-                <div class="market-card">
-                  <div class="flex-between">
-                    <div><strong>${m.question}</strong><div class="small">${m.description || ''}</div></div>
-                    ${marketStatusTag(m)}
-                  </div>
-                  <div class="flex" style="flex-wrap: wrap; gap:12px;">
-                    <div class="metric"><div class="label">YES prob</div><div class="value">${(m.price_yes * 100).toFixed(1)}%</div></div>
-                    <div class="metric"><div class="label">NO prob</div><div class="value">${(m.price_no * 100).toFixed(1)}%</div></div>
-                  </div>
-                  ${renderOddsChart(m.odds_history)}
-                  ${waitMsg}
-                  <div class="market-actions">
-                    <button onclick="placeBet(${m.id}, 'YES')">Bet 1€ YES</button>
-                    <button onclick="placeBet(${m.id}, 'NO')">Bet 1€ NO</button>
-                    ${adminControls}
-                    <button class="secondary" onclick="complain(${m.id})">Complain</button>
-                  </div>
-                  <div class="small">Creator: ${m.creator_id} | Liquidity b: ${m.liquidity_b}</div>
-                  <div class="small">Volume YES: ${m.volume_yes.toFixed(2)}€ | Volume NO: ${m.volume_no.toFixed(2)}€ | Total: ${(m.volume_yes + m.volume_no).toFixed(2)}€</div>
-                  <div class="ledger-list">${renderMarketLedger(m)}</div>
-                </div>
-              `;
-            },
-          )
-          .join('');
+        markets = await fetchJSON('/markets');
+        renderOpenMarkets();
+        renderAdminMarkets();
+        if (selectedMarket) {
+          await selectMarket(selectedMarket.id, false);
+        } else if (markets.length) {
+          const firstOpen = markets.find((m) => m.status === 'OPEN') || markets[0];
+          await selectMarket(firstOpen.id, false);
+        }
       }
 
       async function init() {
