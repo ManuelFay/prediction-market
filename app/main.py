@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import List
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, select
 
 from . import amm
@@ -14,10 +17,12 @@ from .schemas import (
     BetCreate,
     BetRead,
     ComplaintCreate,
+    DepositRequest,
     LedgerEntryRead,
     MarketCreate,
     MarketRead,
     MarketWithBets,
+    PositionRead,
     ResolutionRequest,
     UserCreate,
     UserRead,
@@ -32,6 +37,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+BASE_DIR = Path(__file__).resolve().parent
+FRONTEND_DIR = BASE_DIR / "frontend"
+app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+
 
 @app.on_event("startup")
 def on_startup() -> None:
@@ -43,6 +52,14 @@ def on_startup() -> None:
 def add_ledger_entry(session: Session, user_id: int, market_id: int | None, amount: float, entry_type: LedgerType, note: str | None = None) -> None:
     entry = LedgerEntry(user_id=user_id, market_id=market_id, amount=amount, entry_type=entry_type, note=note)
     session.add(entry)
+
+
+@app.get("/", response_class=HTMLResponse)
+def serve_frontend() -> HTMLResponse:
+    index_path = FRONTEND_DIR / "index.html"
+    if not index_path.exists():
+        raise HTTPException(status_code=500, detail="Frontend not built")
+    return HTMLResponse(index_path.read_text(encoding="utf-8"))
 
 
 # User endpoints
@@ -64,9 +81,68 @@ def list_users(session: Session = Depends(get_session)) -> List[User]:
     return session.exec(select(User)).all()
 
 
+@app.get("/users/{user_id}", response_model=UserRead)
+def get_user(user_id: int, session: Session = Depends(get_session)) -> User:
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
 @app.get("/users/{user_id}/ledger", response_model=List[LedgerEntryRead])
 def user_ledger(user_id: int, session: Session = Depends(get_session)) -> List[LedgerEntry]:
     return session.exec(select(LedgerEntry).where(LedgerEntry.user_id == user_id).order_by(LedgerEntry.created_at)).all()
+
+
+@app.post("/users/{user_id}/deposit", response_model=UserRead)
+def deposit(user_id: int, payload: DepositRequest, session: Session = Depends(get_session)) -> User:
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.balance += payload.amount
+    add_ledger_entry(session, user.id, None, payload.amount, LedgerType.STARTING_BALANCE, note="Manual top-up")
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user
+
+
+@app.get("/users/{user_id}/positions", response_model=List[PositionRead])
+def user_positions(user_id: int, session: Session = Depends(get_session)) -> List[PositionRead]:
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    bets = session.exec(select(Bet).where(Bet.user_id == user_id)).all()
+    positions: dict[tuple[int, str], PositionRead] = {}
+    for bet in bets:
+        market = session.get(Market, bet.market_id)
+        if not market:
+            continue
+        key = (bet.market_id, bet.side)
+        if key not in positions:
+            positions[key] = PositionRead(
+                market_id=bet.market_id,
+                market_question=market.question,
+                side=bet.side,
+                total_shares=0.0,
+                total_stake=0.0,
+                avg_odds=0.0,
+                potential_payout=0.0,
+                market_status=market.status,
+                market_outcome=market.outcome,
+            )
+        pos = positions[key]
+        pos.total_shares += bet.shares
+        pos.total_stake += bet.cost
+        pos.market_status = market.status
+        pos.market_outcome = market.outcome
+        pos.avg_odds = pos.total_shares / pos.total_stake if pos.total_stake else 0
+        pos.potential_payout = pos.total_shares if market.status in {MarketStatus.OPEN, MarketStatus.PENDING, MarketStatus.CLOSED} else (
+            pos.total_shares if market.outcome == bet.side else 0
+        )
+
+    return list(positions.values())
 
 
 # Market endpoints

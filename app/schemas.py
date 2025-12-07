@@ -21,6 +21,10 @@ class UserRead(BaseModel):
         from_attributes = True
 
 
+class DepositRequest(BaseModel):
+    amount: float = Field(..., gt=0)
+
+
 class MarketCreate(BaseModel):
     question: str
     description: Optional[str] = None
@@ -83,6 +87,18 @@ class ResolutionRequest(BaseModel):
 
 class MarketWithBets(MarketRead):
     bets: list[BetRead]
+
+
+class PositionRead(BaseModel):
+    market_id: int
+    market_question: str
+    side: str
+    total_shares: float
+    total_stake: float
+    avg_odds: float
+    potential_payout: float
+    market_status: MarketStatus
+    market_outcome: Optional[str]
 
 
 class LedgerEntryRead(BaseModel):

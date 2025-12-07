@@ -2,3 +2,4 @@ fastapi==0.112.0
 uvicorn==0.30.3
 sqlmodel==0.0.21
 pydantic==2.8.2
+aiofiles==23.2.1

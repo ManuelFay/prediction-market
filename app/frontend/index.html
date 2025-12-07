@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Friends Prediction Market</title>
+    <style>
+      :root {
+        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #0f172a;
+        color: #e2e8f0;
+      }
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      header {
+        background: #111827;
+        padding: 16px 24px;
+        border-bottom: 1px solid #1f2937;
+      }
+      h1 {
+        margin: 0;
+        font-size: 22px;
+      }
+      main {
+        padding: 24px;
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        gap: 16px;
+      }
+      section {
+        background: #111827;
+        border: 1px solid #1f2937;
+        border-radius: 12px;
+        padding: 16px;
+      }
+      h2 {
+        margin-top: 0;
+        font-size: 18px;
+      }
+      label {
+        display: block;
+        margin-bottom: 6px;
+        font-weight: 600;
+      }
+      input, select, textarea, button {
+        width: 100%;
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 8px;
+        border: 1px solid #1f2937;
+        background: #0b1221;
+        color: #e2e8f0;
+        box-sizing: border-box;
+      }
+      button {
+        cursor: pointer;
+        background: linear-gradient(90deg, #14b8a6, #3b82f6);
+        border: none;
+        font-weight: 700;
+      }
+      button.secondary {
+        background: #1f2937;
+        border: 1px solid #334155;
+      }
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .metric {
+        background: #0b1221;
+        border: 1px solid #1f2937;
+        border-radius: 10px;
+        padding: 10px;
+      }
+      .metric .label {
+        color: #94a3b8;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .metric .value {
+        font-size: 18px;
+        font-weight: 700;
+      }
+      .market-card {
+        display: grid;
+        gap: 8px;
+        padding: 12px;
+        border-radius: 10px;
+        border: 1px solid #1f2937;
+        background: #0b1221;
+        margin-bottom: 12px;
+      }
+      .market-actions {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 8px;
+      }
+      .bets-list, .ledger-list {
+        max-height: 260px;
+        overflow: auto;
+        border: 1px solid #1f2937;
+        border-radius: 10px;
+      }
+      .list-row {
+        border-bottom: 1px solid #1f2937;
+        padding: 8px 10px;
+      }
+      .list-row:last-child {
+        border-bottom: none;
+      }
+      .tag {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        background: #1f2937;
+        border: 1px solid #334155;
+        margin-right: 6px;
+      }
+      .pill {
+        padding: 2px 8px;
+        border-radius: 8px;
+        background: #1e3a8a;
+        display: inline-block;
+      }
+      .danger { background: #7f1d1d; border: 1px solid #dc2626; }
+      .success { background: #064e3b; border: 1px solid #10b981; }
+      .small { font-size: 12px; color: #94a3b8; }
+      .flex { display: flex; gap: 8px; align-items: center; }
+      .flex-between { display: flex; justify-content: space-between; align-items: center; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Friends-only Prediction Market</h1>
+    </header>
+    <main>
+      <section>
+        <h2>Accounts</h2>
+        <label for="new-user-name">New user name</label>
+        <input id="new-user-name" placeholder="Alice" />
+        <button onclick="createUser()">Create user (starts with 50€)</button>
+        <hr />
+        <label for="active-user">Active user</label>
+        <select id="active-user" onchange="refreshActiveUser()"></select>
+        <div class="metrics">
+          <div class="metric">
+            <div class="label">Balance</div>
+            <div class="value" id="balance">–</div>
+          </div>
+          <div class="metric">
+            <div class="label">Positions</div>
+            <div class="value" id="positions-count">–</div>
+          </div>
+        </div>
+        <label for="topup-amount">Top-up amount (€)</label>
+        <input id="topup-amount" type="number" step="1" value="10" />
+        <button onclick="deposit()" class="secondary">Top up account</button>
+        <hr />
+        <h3>Open positions</h3>
+        <div class="bets-list" id="positions"></div>
+        <h3>Ledger</h3>
+        <div class="ledger-list" id="ledger"></div>
+      </section>
+      <section>
+        <h2>Create market</h2>
+        <div class="flex-between small"><span>Seed: 10€ will be locked from creator.</span><span>Bet size: fixed 1€</span></div>
+        <label for="question">Question</label>
+        <input id="question" placeholder="YES if PSG beats OM?" />
+        <label for="description">Details</label>
+        <textarea id="description" placeholder="Resolution rules, notes"></textarea>
+        <label for="initial-prob">Initial probability for YES (0-1)</label>
+        <input id="initial-prob" type="number" step="0.01" value="0.5" />
+        <label for="liquidity-b">Liquidity b (controls slippage)</label>
+        <input id="liquidity-b" type="number" step="0.5" value="5" />
+        <button onclick="createMarket()">Create market</button>
+        <hr />
+        <h2>Markets</h2>
+        <div id="markets"></div>
+      </section>
+    </main>
+    <script>
+      const apiBase = window.location.origin;
+
+      async function fetchJSON(path, options = {}) {
+        const res = await fetch(`${apiBase}${path}`, {
+          headers: { 'Content-Type': 'application/json' },
+          ...options,
+        });
+        if (!res.ok) {
+          const error = await res.json().catch(() => ({}));
+          throw new Error(error.detail || 'Request failed');
+        }
+        return res.json();
+      }
+
+      async function createUser() {
+        const name = document.getElementById('new-user-name').value.trim();
+        if (!name) return alert('Enter a name');
+        await fetchJSON('/users', { method: 'POST', body: JSON.stringify({ name }) });
+        document.getElementById('new-user-name').value = '';
+        await loadUsers();
+      }
+
+      async function deposit() {
+        const userId = getActiveUserId();
+        if (!userId) return;
+        const amount = Number(document.getElementById('topup-amount').value || '0');
+        if (amount <= 0) return alert('Enter a positive amount');
+        await fetchJSON(`/users/${userId}/deposit`, { method: 'POST', body: JSON.stringify({ amount }) });
+        await refreshActiveUser();
+      }
+
+      async function createMarket() {
+        const userId = getActiveUserId();
+        if (!userId) return alert('Pick a creator');
+        const payload = {
+          question: document.getElementById('question').value,
+          description: document.getElementById('description').value,
+          initial_prob_yes: Number(document.getElementById('initial-prob').value),
+          liquidity_b: Number(document.getElementById('liquidity-b').value),
+        };
+        await fetchJSON(`/markets?user_id=${userId}`, { method: 'POST', body: JSON.stringify(payload) });
+        document.getElementById('question').value = '';
+        document.getElementById('description').value = '';
+        await loadMarkets();
+        await refreshActiveUser();
+      }
+
+      async function placeBet(marketId, side) {
+        const userId = getActiveUserId();
+        if (!userId) return alert('Pick a user to bet');
+        await fetchJSON(`/markets/${marketId}/bet?user_id=${userId}`, {
+          method: 'POST',
+          body: JSON.stringify({ side }),
+        });
+        await loadMarkets();
+        await refreshActiveUser();
+      }
+
+      async function resolveMarket(marketId, outcome) {
+        await fetchJSON(`/markets/${marketId}/resolve`, { method: 'POST', body: JSON.stringify({ outcome }) });
+        await loadMarkets();
+        await refreshActiveUser();
+      }
+
+      async function complain(marketId) {
+        const userId = getActiveUserId();
+        if (!userId) return alert('Pick a user to complain');
+        const reason = prompt('Reason for complaint');
+        if (!reason) return;
+        await fetchJSON(`/markets/${marketId}/complain?user_id=${userId}`, { method: 'POST', body: JSON.stringify({ reason }) });
+        alert('Complaint recorded');
+      }
+
+      function getActiveUserId() {
+        const select = document.getElementById('active-user');
+        return select.value ? Number(select.value) : null;
+      }
+
+      async function loadUsers() {
+        const users = await fetchJSON('/users');
+        const select = document.getElementById('active-user');
+        select.innerHTML = '<option value="">Select user</option>';
+        users.forEach((u) => {
+          const opt = document.createElement('option');
+          opt.value = u.id;
+          opt.textContent = `${u.name} (balance ${u.balance.toFixed(2)}€)`;
+          select.appendChild(opt);
+        });
+      }
+
+      async function refreshActiveUser() {
+        const userId = getActiveUserId();
+        if (!userId) return;
+        const user = await fetchJSON(`/users/${userId}`);
+        document.getElementById('balance').textContent = `${user.balance.toFixed(2)} €`;
+        await loadLedger(userId);
+        await loadPositions(userId);
+      }
+
+      async function loadLedger(userId) {
+        const ledger = await fetchJSON(`/users/${userId}/ledger`);
+        const container = document.getElementById('ledger');
+        container.innerHTML = ledger
+          .map((e) => `<div class="list-row"><div class="flex-between"><span class="tag">${e.entry_type}</span><span>${new Date(e.created_at).toLocaleString()}</span></div><div>${e.amount.toFixed(2)} €${e.note ? ` — ${e.note}` : ''}</div></div>`)
+          .join('');
+      }
+
+      async function loadPositions(userId) {
+        const positions = await fetchJSON(`/users/${userId}/positions`);
+        document.getElementById('positions-count').textContent = positions.length;
+        const container = document.getElementById('positions');
+        container.innerHTML = positions
+          .map((p) => `<div class="list-row"><div class="flex-between"><strong>${p.market_question}</strong><span class="tag">${p.market_status}</span></div><div>Side: <span class="pill">${p.side}</span></div><div>Shares: ${p.total_shares.toFixed(4)} | Stake: ${p.total_stake.toFixed(2)}€ | Avg odds: ${p.avg_odds.toFixed(2)} | Potential payout: ${p.potential_payout.toFixed(2)}€</div></div>`)
+          .join('');
+      }
+
+      function marketStatusTag(m) {
+        if (m.status === 'RESOLVED') return '<span class="tag success">RESOLVED</span>';
+        if (m.status === 'INVALID') return '<span class="tag danger">INVALID</span>';
+        return `<span class="tag">${m.status}</span>`;
+      }
+
+      async function loadMarkets() {
+        const markets = await fetchJSON('/markets');
+        const container = document.getElementById('markets');
+        container.innerHTML = markets
+          .map(
+            (m) => `
+            <div class="market-card">
+              <div class="flex-between">
+                <div><strong>${m.question}</strong><div class="small">${m.description || ''}</div></div>
+                ${marketStatusTag(m)}
+              </div>
+              <div class="flex" style="flex-wrap: wrap; gap:12px;">
+                <div class="metric"><div class="label">YES prob</div><div class="value">${(m.price_yes * 100).toFixed(1)}%</div></div>
+                <div class="metric"><div class="label">NO prob</div><div class="value">${(m.price_no * 100).toFixed(1)}%</div></div>
+              </div>
+              <div class="market-actions">
+                <button onclick="placeBet(${m.id}, 'YES')">Bet 1€ YES</button>
+                <button onclick="placeBet(${m.id}, 'NO')">Bet 1€ NO</button>
+                <button class="secondary" onclick="resolveMarket(${m.id}, 'YES')">Resolve YES</button>
+                <button class="secondary" onclick="resolveMarket(${m.id}, 'NO')">Resolve NO</button>
+                <button class="secondary" onclick="resolveMarket(${m.id}, 'INVALID')">Invalidate</button>
+                <button class="secondary" onclick="complain(${m.id})">Complain</button>
+              </div>
+              <div class="small">Creator: ${m.creator_id} | Liquidity b: ${m.liquidity_b}</div>
+            </div>
+          `,
+          )
+          .join('');
+      }
+
+      async function init() {
+        await loadUsers();
+        await loadMarkets();
+      }
+
+      init();
+    </script>
+  </body>
+</html>
