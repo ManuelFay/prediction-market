@@ -29,6 +29,10 @@ class UserRead(BaseModel):
         from_attributes = True
 
 
+class UserAuthRead(UserRead):
+    password: str
+
+
 class DepositRequest(BaseModel):
     amount: float = Field(..., gt=0)
 
@@ -65,6 +69,7 @@ class MarketRead(BaseModel):
     created_at: datetime
     event_time: Optional[datetime]
     creator_id: int
+    creator_name: Optional[str]
     price_yes: float
     price_no: float
     last_bet_at: Optional[datetime]
@@ -81,6 +86,7 @@ class MarketRead(BaseModel):
 
 class BetCreate(BaseModel):
     side: str
+    password: str
 
 
 class BetRead(BaseModel):

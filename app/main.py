@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import List
+import secrets
+from typing import List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlmodel import Session, select, delete
 
 from . import amm
@@ -27,6 +29,7 @@ from .schemas import (
     PositionRead,
     ResolutionRequest,
     UserCreate,
+    UserAuthRead,
     UserRead,
     PayoutBreakdown,
 )
@@ -42,6 +45,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+security = HTTPBasic()
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "admin"
+
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
@@ -53,6 +60,17 @@ def on_startup() -> None:
 
 
 # Helpers
+
+def require_admin(credentials: HTTPBasicCredentials = Depends(security)) -> None:
+    username_ok = secrets.compare_digest(credentials.username, ADMIN_USERNAME)
+    password_ok = secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
+    if not (username_ok and password_ok):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Admin credentials required",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
 
 def add_ledger_entry(session: Session, user_id: int, market_id: int | None, amount: float, entry_type: LedgerType, note: str | None = None) -> None:
     entry = LedgerEntry(user_id=user_id, market_id=market_id, amount=amount, entry_type=entry_type, note=note)
@@ -70,8 +88,12 @@ def serve_frontend() -> HTMLResponse:
 # User endpoints
 
 
-@app.post("/users", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-def create_user(payload: UserCreate, session: Session = Depends(get_session)) -> User:
+@app.post("/users", response_model=UserAuthRead, status_code=status.HTTP_201_CREATED)
+def create_user(
+    payload: UserCreate,
+    session: Session = Depends(get_session),
+    _: None = Depends(require_admin),
+) -> User:
     user = User(name=payload.name)
     session.add(user)
     session.flush()
@@ -87,7 +109,7 @@ def list_users(session: Session = Depends(get_session)) -> List[User]:
 
 
 @app.post("/reset", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
-def reset_state(session: Session = Depends(get_session)) -> Response:
+def reset_state(session: Session = Depends(get_session), _: None = Depends(require_admin)) -> Response:
     session.exec(delete(LedgerEntry))
     session.exec(delete(Bet))
     session.exec(delete(Complaint))
@@ -110,8 +132,40 @@ def user_ledger(user_id: int, session: Session = Depends(get_session)) -> List[L
     return session.exec(select(LedgerEntry).where(LedgerEntry.user_id == user_id).order_by(LedgerEntry.created_at)).all()
 
 
+@app.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
+def delete_user(user_id: int, session: Session = Depends(get_session), _: None = Depends(require_admin)) -> Response:
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    created_markets = session.exec(select(Market).where(Market.creator_id == user_id)).all()
+    if created_markets:
+        raise HTTPException(status_code=400, detail="Delete or reassign the user's markets first")
+
+    existing_bets = session.exec(select(Bet).where(Bet.user_id == user_id)).all()
+    if existing_bets:
+        raise HTTPException(status_code=400, detail="Cannot delete a user with existing bets")
+
+    ledger_entries = session.exec(select(LedgerEntry).where(LedgerEntry.user_id == user_id)).all()
+    for entry in ledger_entries:
+        session.delete(entry)
+
+    complaints = session.exec(select(Complaint).where(Complaint.user_id == user_id)).all()
+    for complaint in complaints:
+        session.delete(complaint)
+
+    session.delete(user)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.post("/users/{user_id}/deposit", response_model=UserRead)
-def deposit(user_id: int, payload: DepositRequest, session: Session = Depends(get_session)) -> User:
+def deposit(
+    user_id: int,
+    payload: DepositRequest,
+    session: Session = Depends(get_session),
+    _: None = Depends(require_admin),
+) -> User:
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -201,13 +255,13 @@ def create_market(payload: MarketCreate, user_id: int, session: Session = Depend
     )
     session.commit()
     session.refresh(market)
-    return market_read(market)
+    return market_read(market, session)
 
 
 @app.get("/markets", response_model=List[MarketRead])
 def list_markets(session: Session = Depends(get_session)) -> List[MarketRead]:
     markets = session.exec(select(Market)).all()
-    return [market_read(m) for m in markets]
+    return [market_read(m, session) for m in markets]
 
 
 @app.get("/markets/{market_id}", response_model=MarketWithBets)
@@ -215,7 +269,7 @@ def get_market(market_id: int, session: Session = Depends(get_session)) -> Marke
     market = session.get(Market, market_id)
     if not market:
         raise HTTPException(status_code=404, detail="Market not found")
-    market_data = market_read(market)
+    market_data = market_read(market, session)
     bets = session.exec(select(Bet).where(Bet.market_id == market_id)).all()
     odds_history = compute_odds_history(market, bets)
     volume_yes = sum(b.cost for b in bets if b.side.upper() == "YES")
@@ -240,6 +294,8 @@ def place_bet(market_id: int, payload: BetCreate, user_id: int, session: Session
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if payload.password != user.password:
+        raise HTTPException(status_code=403, detail="Invalid password")
     if user.balance < 1:
         raise HTTPException(status_code=400, detail="Insufficient balance")
 
@@ -313,7 +369,7 @@ def resolve_market(market_id: int, payload: ResolutionRequest, session: Session 
     session.add(market)
     session.commit()
     session.refresh(market)
-    return market_read(market)
+    return market_read(market, session)
 
 
 @app.delete("/markets/{market_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
@@ -369,10 +425,17 @@ def delete_market(market_id: int, user_id: int, session: Session = Depends(get_s
 # Business logic helpers
 
 
-def market_read(market: Market) -> MarketRead:
+def market_read(market: Market, session: Optional[Session] = None) -> MarketRead:
     price = amm.price_yes(market.q_yes, market.q_no, market.liquidity_b)
     yes_payout, yes_probability = compute_bet_preview(market, "YES")
     no_payout, no_probability = compute_bet_preview(market, "NO")
+    creator_name = None
+    if session:
+        creator = session.get(User, market.creator_id)
+        creator_name = creator.name if creator else None
+    elif market.creator:
+        creator_name = market.creator.name
+
     return MarketRead(
         id=market.id,
         question=market.question,
@@ -398,6 +461,7 @@ def market_read(market: Market) -> MarketRead:
         total_payout_yes=market.total_payout_yes,
         total_payout_no=market.total_payout_no,
         creator_payout=market.creator_payout,
+        creator_name=creator_name,
     )
 
 

@@ -35,9 +35,14 @@ def client():
 
 
 def create_user(client: TestClient, name: str = "Alice") -> dict:
-    response = client.post("/users", json={"name": name})
+    response = client.post("/users", json={"name": name}, auth=("admin", "admin"))
     assert response.status_code == 201
     return response.json()
+
+
+def test_create_user_requires_admin(client: TestClient) -> None:
+    response = client.post("/users", json={"name": "NoAdmin"})
+    assert response.status_code == 401
 
 
 def create_market(client: TestClient, creator_id: int) -> dict:
@@ -75,7 +80,8 @@ def test_market_detail_includes_odds_history_and_volume(client: TestClient) -> N
     market = create_market(client, user["id"])
 
     bet_resp = client.post(
-        f"/markets/{market['id']}/bet?user_id={user['id']}", json={"side": "YES"}
+        f"/markets/{market['id']}/bet?user_id={user['id']}",
+        json={"side": "YES", "password": user["password"]},
     )
     assert bet_resp.status_code == 201
 
@@ -95,12 +101,14 @@ def test_multiple_bets_allowed_without_delay(client: TestClient) -> None:
     market = create_market(client, user["id"])
 
     first_bet = client.post(
-        f"/markets/{market['id']}/bet?user_id={user['id']}", json={"side": "YES"}
+        f"/markets/{market['id']}/bet?user_id={user['id']}",
+        json={"side": "YES", "password": user["password"]},
     )
     assert first_bet.status_code == 201
 
     second_bet = client.post(
-        f"/markets/{market['id']}/bet?user_id={user['id']}", json={"side": "NO"}
+        f"/markets/{market['id']}/bet?user_id={user['id']}",
+        json={"side": "NO", "password": user["password"]},
     )
     assert second_bet.status_code == 201
 
@@ -111,22 +119,26 @@ def test_probability_guards_block_extreme_sides(client: TestClient) -> None:
     low_prob_market = create_market_with_prob(client, user["id"], 0.04)
 
     yes_blocked = client.post(
-        f"/markets/{high_prob_market['id']}/bet?user_id={user['id']}", json={"side": "YES"}
+        f"/markets/{high_prob_market['id']}/bet?user_id={user['id']}",
+        json={"side": "YES", "password": user["password"]},
     )
     assert yes_blocked.status_code == 400
 
     no_allowed = client.post(
-        f"/markets/{high_prob_market['id']}/bet?user_id={user['id']}", json={"side": "NO"}
+        f"/markets/{high_prob_market['id']}/bet?user_id={user['id']}",
+        json={"side": "NO", "password": user["password"]},
     )
     assert no_allowed.status_code == 201
 
     no_blocked = client.post(
-        f"/markets/{low_prob_market['id']}/bet?user_id={user['id']}", json={"side": "NO"}
+        f"/markets/{low_prob_market['id']}/bet?user_id={user['id']}",
+        json={"side": "NO", "password": user["password"]},
     )
     assert no_blocked.status_code == 400
 
     yes_allowed = client.post(
-        f"/markets/{low_prob_market['id']}/bet?user_id={user['id']}", json={"side": "YES"}
+        f"/markets/{low_prob_market['id']}/bet?user_id={user['id']}",
+        json={"side": "YES", "password": user["password"]},
     )
     assert yes_allowed.status_code == 201
 
@@ -138,13 +150,15 @@ def test_resolve_market_pays_winners(client: TestClient) -> None:
     market = create_market(client, creator["id"])
 
     bet_yes_resp = client.post(
-        f"/markets/{market['id']}/bet?user_id={yes_bettor['id']}", json={"side": "YES"}
+        f"/markets/{market['id']}/bet?user_id={yes_bettor['id']}",
+        json={"side": "YES", "password": yes_bettor["password"]},
     )
     assert bet_yes_resp.status_code == 201
     bet_yes = bet_yes_resp.json()
 
     bet_no_resp = client.post(
-        f"/markets/{market['id']}/bet?user_id={no_bettor['id']}", json={"side": "NO"}
+        f"/markets/{market['id']}/bet?user_id={no_bettor['id']}",
+        json={"side": "NO", "password": no_bettor["password"]},
     )
     assert bet_no_resp.status_code == 201
 
@@ -181,9 +195,13 @@ def test_random_bets_zero_sum_and_payout_breakdown(client: TestClient) -> None:
     users = [create_user(client, f"User {idx}") for idx in range(4)]
     creator = users[0]
     market = create_market(client, creator["id"])
+    password_map = {u["id"]: u["password"] for u in users}
 
     def place_or_wait(user_id: int, side: str) -> None:
-        client.post(f"/markets/{market['id']}/bet?user_id={user_id}", json={"side": side})
+        client.post(
+            f"/markets/{market['id']}/bet?user_id={user_id}",
+            json={"side": side, "password": password_map[user_id]},
+        )
 
     bettors = [u["id"] for u in users]
     for _ in range(20):
@@ -210,9 +228,22 @@ def test_reset_endpoint_clears_state(client: TestClient) -> None:
     market = create_market(client, user["id"])
     assert market["id"]
 
-    reset_resp = client.post("/reset")
+    reset_resp = client.post("/reset", auth=("admin", "admin"))
     assert reset_resp.status_code == 204
 
     users_after = client.get("/users")
     assert users_after.status_code == 200
     assert users_after.json() == []
+
+
+def test_admin_can_delete_user_without_activity(client: TestClient) -> None:
+    user = create_user(client, "ToRemove")
+
+    blocked = client.delete(f"/users/{user['id']}")
+    assert blocked.status_code == 401
+
+    allowed = client.delete(f"/users/{user['id']}", auth=("admin", "admin"))
+    assert allowed.status_code == 204
+
+    missing = client.get(f"/users/{user['id']}")
+    assert missing.status_code == 404
