@@ -10,7 +10,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel, Session, create_engine
 
 from app import amm
-from app.main import app, get_session
+from app.main import MARKET_SEED, app, get_session
 
 
 @pytest.fixture()
@@ -115,8 +115,8 @@ def test_multiple_bets_allowed_without_delay(client: TestClient) -> None:
 
 def test_probability_guards_block_extreme_sides(client: TestClient) -> None:
     user = create_user(client)
-    high_prob_market = create_market_with_prob(client, user["id"], 0.96)
-    low_prob_market = create_market_with_prob(client, user["id"], 0.04)
+    high_prob_market = create_market_with_prob(client, user["id"], 0.9)
+    low_prob_market = create_market_with_prob(client, user["id"], 0.1)
 
     yes_blocked = client.post(
         f"/markets/{high_prob_market['id']}/bet?user_id={user['id']}",
@@ -141,6 +141,63 @@ def test_probability_guards_block_extreme_sides(client: TestClient) -> None:
         json={"side": "YES", "password": user["password"]},
     )
     assert yes_allowed.status_code == 201
+
+
+def test_market_creation_rejects_out_of_range_probabilities(client: TestClient) -> None:
+    user = create_user(client)
+
+    too_high = client.post(
+        f"/markets?user_id={user['id']}",
+        json={
+            "question": "Out of range?",
+            "initial_prob_yes": 0.95,
+            "liquidity_b": 5.0,
+        },
+    )
+    assert too_high.status_code == 422
+
+    too_low = client.post(
+        f"/markets?user_id={user['id']}",
+        json={
+            "question": "Out of range?",
+            "initial_prob_yes": 0.05,
+            "liquidity_b": 5.0,
+        },
+    )
+    assert too_low.status_code == 422
+
+
+def test_creator_loss_is_capped_by_seed(client: TestClient) -> None:
+    user = create_user(client)
+
+    market_resp = client.post(
+        f"/markets?user_id={user['id']}",
+        json={
+            "question": "Will the cap trigger?",
+            "initial_prob_yes": 0.1,
+            "liquidity_b": 0.5,
+        },
+    )
+    assert market_resp.status_code == 201
+    market = market_resp.json()
+
+    failure_resp = None
+    for _ in range(20):
+        bet_resp = client.post(
+            f"/markets/{market['id']}/bet?user_id={user['id']}",
+            json={"side": "YES", "password": user["password"]},
+        )
+        if bet_resp.status_code != 201:
+            failure_resp = bet_resp
+            break
+
+    assert failure_resp is not None
+    assert failure_resp.status_code == 400
+
+    market_detail = client.get(f"/markets/{market['id']}").json()
+    yes_shares = sum(bet["shares"] for bet in market_detail["bets"] if bet["side"] == "YES")
+    pot_with_bets = MARKET_SEED + len(market_detail["bets"])
+    assert yes_shares <= pot_with_bets + 1e-6
 
 
 def test_resolve_market_pays_winners(client: TestClient) -> None:

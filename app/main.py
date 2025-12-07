@@ -77,6 +77,26 @@ def add_ledger_entry(session: Session, user_id: int, market_id: int | None, amou
     session.add(entry)
 
 
+def adjusted_liquidity(initial_prob: float, base_liquidity: float) -> float:
+    """Boost liquidity when markets start far from 50% to curb volatility.
+
+    A small multiplier keeps prices smoother in skewed markets, reducing the
+    chance of running into the creator loss cap after only a handful of bets.
+    """
+
+    skew = abs(initial_prob - 0.5)
+    # Up to a 50% boost when starting at the edges of the allowed range.
+    return base_liquidity * (1 + skew * 0.5)
+
+
+def market_exposure(session: Session, market_id: int) -> tuple[float, float, float]:
+    bets = session.exec(select(Bet).where(Bet.market_id == market_id)).all()
+    total_yes_shares = sum(bet.shares for bet in bets if bet.side.upper() == "YES")
+    total_no_shares = sum(bet.shares for bet in bets if bet.side.upper() == "NO")
+    total_staked = sum(bet.cost for bet in bets)
+    return total_yes_shares, total_no_shares, total_staked
+
+
 @app.get("/", response_class=HTMLResponse)
 def serve_frontend() -> HTMLResponse:
     index_path = FRONTEND_DIR / "index.html"
@@ -234,7 +254,12 @@ def create_market(payload: MarketCreate, user_id: int, session: Session = Depend
     if user.balance < 10:
         raise HTTPException(status_code=400, detail="Insufficient balance for seed")
 
-    q_yes, q_no = amm.initial_q_values(payload.initial_prob_yes, subsidy=MARKET_SEED, b=payload.liquidity_b)
+    if not 0.1 <= payload.initial_prob_yes <= 0.9:
+        raise HTTPException(status_code=400, detail="Initial probability must be between 10% and 90%")
+
+    liquidity_b = adjusted_liquidity(payload.initial_prob_yes, payload.liquidity_b)
+
+    q_yes, q_no = amm.initial_q_values(payload.initial_prob_yes, subsidy=MARKET_SEED, b=liquidity_b)
 
     market = Market(
         question=payload.question,
@@ -243,7 +268,7 @@ def create_market(payload: MarketCreate, user_id: int, session: Session = Depend
         no_meaning=payload.no_meaning,
         resolution_source=payload.resolution_source,
         initial_prob_yes=payload.initial_prob_yes,
-        liquidity_b=payload.liquidity_b,
+        liquidity_b=liquidity_b,
         q_yes=q_yes,
         q_no=q_no,
         creator_id=user.id,
@@ -312,14 +337,24 @@ def place_bet(market_id: int, payload: BetCreate, user_id: int, session: Session
         raise HTTPException(status_code=400, detail="Side must be YES or NO")
 
     price_yes = amm.price_yes(market.q_yes, market.q_no, market.liquidity_b)
-    if side == "YES" and price_yes > 0.95:
-        raise HTTPException(status_code=400, detail="YES betting disabled above 95% probability")
-    if side == "NO" and price_yes < 0.05:
-        raise HTTPException(status_code=400, detail="NO betting disabled below 5% probability")
+    if side == "YES" and price_yes >= 0.9:
+        raise HTTPException(status_code=400, detail="YES betting disabled at or above 90% probability")
+    if side == "NO" and price_yes <= 0.1:
+        raise HTTPException(status_code=400, detail="NO betting disabled at or below 10% probability")
 
     new_q_yes, new_q_no = amm.shares_for_cost(1.0, side, market.q_yes, market.q_no, market.liquidity_b)
     delta_yes = new_q_yes - market.q_yes
     delta_no = new_q_no - market.q_no
+
+    yes_shares, no_shares, total_staked = market_exposure(session, market.id)
+    projected_yes = yes_shares + (delta_yes if side == "YES" else 0)
+    projected_no = no_shares + (delta_no if side == "NO" else 0)
+    pot_with_new_bet = MARKET_SEED + total_staked + 1.0
+    if max(projected_yes, projected_no) > pot_with_new_bet:
+        raise HTTPException(
+            status_code=400,
+            detail="Bet would exceed the creator's capped loss; try again later or increase liquidity.",
+        )
 
     market.q_yes, market.q_no = new_q_yes, new_q_no
     market.last_bet_at = datetime.utcnow()

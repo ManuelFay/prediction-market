@@ -48,7 +48,7 @@ class MarketCreate(BaseModel):
     yes_meaning: Optional[str] = None
     no_meaning: Optional[str] = None
     resolution_source: Optional[str] = None
-    initial_prob_yes: float = Field(..., gt=0, lt=1)
+    initial_prob_yes: float = Field(..., ge=0.1, le=0.9)
     liquidity_b: float = Field(5.0, gt=0)
     event_time: Optional[datetime] = None
 
