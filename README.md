@@ -2,6 +2,8 @@
 
 A minimal FastAPI backend and lightweight browser frontend that implements the LMSR-style AMM described in the spec: users get starting balances, can create binary markets with seeded liquidity, place 1€ bets, and resolve/complain on outcomes. Data persists to a local SQLite database.
 
+For a walkthrough of common flows, see [USER_GUIDE.md](USER_GUIDE.md).
+
 ## Quickstart
 
 1. **Install dependencies**
@@ -29,6 +31,12 @@ A minimal FastAPI backend and lightweight browser frontend that implements the L
 - **Resolve**: `POST /markets/{id}/resolve` with `{ "outcome": "YES" | "NO" | "INVALID" }`. Winners are paid `shares * 1€`; invalid markets refund all stakes and return the seed.
 - **Complaints**: `POST /markets/{id}/complain` while status is `PENDING` to log disputes.
 - **Ledger**: `GET /users/{id}/ledger` shows `STARTING_BALANCE`, `DEPOSIT_SEED`, `BET_DEBIT`, `PAYOUT`, and `REFUND` entries.
+
+## Risk controls & pricing guardrails
+
+- **Probability clamps**: Markets must launch between 10% and 90% initial probability, and live odds stay within that band (bets on YES are blocked at/above 90%, bets on NO at/below 10%).
+- **Creator loss cap**: The AMM will not mint shares that could pay out more than the 10€ seed + all collected stakes if the market resolved immediately. Excessively dilutive bets are rejected with an error.
+- **Skew-aware liquidity**: Markets that start away from 50% automatically bump their `liquidity_b` slightly to smooth prices and reduce how often the loss cap triggers.
 
 ## AMM implementation notes
 
