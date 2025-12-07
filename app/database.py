@@ -2,19 +2,30 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 
 from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel, Session, create_engine
 
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = "sqlite:///./prediction.db"
-engine = create_engine(
-    DATABASE_URL,
-    echo=False,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/prediction.db")
+RESET_DB_ON_STARTUP = os.getenv("RESET_DB_ON_STARTUP", "true").lower() == "true"
+
+if DATABASE_URL.startswith("sqlite:///"):
+    db_path = Path(DATABASE_URL.replace("sqlite:///", "", 1))
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+engine_kwargs: dict = {
+    "echo": False,
+    "connect_args": {"check_same_thread": False},
+}
+
+# In-memory SQLite benefits from StaticPool to reuse the same connection during tests.
+if DATABASE_URL in {"sqlite://", "sqlite:///:memory:"}:
+    engine_kwargs["poolclass"] = StaticPool
+
+engine = create_engine(DATABASE_URL, **engine_kwargs)
 
 
 def _reset_database() -> None:
@@ -35,7 +46,8 @@ def init_db() -> None:
     schema is recreated each time the app boots.
     """
 
-    _reset_database()
+    if RESET_DB_ON_STARTUP:
+        _reset_database()
     SQLModel.metadata.create_all(engine)
 
 

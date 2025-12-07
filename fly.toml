@@ -1,0 +1,22 @@
+# Fly.io deployment configuration for prediction-market
+app = "prediction-market"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8000"
+  DATABASE_URL = "sqlite:////data/prediction.db"
+  RESET_DB_ON_STARTUP = "false"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[mounts]]
+  source = "data"
+  destination = "/data"
