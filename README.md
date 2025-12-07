@@ -30,8 +30,9 @@ container. The server listens on port `8000` and binds to `0.0.0.0` by default.
 - `DATABASE_URL` (optional): defaults to `sqlite:///./data/prediction.db`. Point
   this to a persistent path (e.g., `/data/prediction.db` when mounting a
   volume) or to Postgres if you migrate the models.
-- `RESET_DB_ON_STARTUP` (optional): defaults to `true` to match local dev. Set
-  to `false` in production to avoid wiping data on each restart.
+- `RESET_DB_ON_STARTUP` (optional): defaults to `false` so production data
+  survives restarts. Set to `true` for ephemeral/local testing if you want a
+  clean schema on each boot.
 
 ### Run with Docker locally
 
