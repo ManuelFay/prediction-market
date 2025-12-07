@@ -430,8 +430,25 @@
       let users = [];
       let markets = [];
       let selectedMarket = null;
-      let activeUserId = Number(localStorage.getItem('activeUserId') || '') || null;
-      let activeUserName = localStorage.getItem('activeUserName') || '';
+      const loadActiveUserFromStorage = () => {
+        const sessionId = Number(sessionStorage.getItem('activeUserId') || '') || null;
+        const sessionName = sessionStorage.getItem('activeUserName') || '';
+        if (sessionId) return { id: sessionId, name: sessionName };
+
+        const legacyId = Number(localStorage.getItem('activeUserId') || '') || null;
+        const legacyName = localStorage.getItem('activeUserName') || '';
+        if (legacyId) {
+          sessionStorage.setItem('activeUserId', String(legacyId));
+          sessionStorage.setItem('activeUserName', legacyName);
+          return { id: legacyId, name: legacyName };
+        }
+
+        return { id: null, name: '' };
+      };
+
+      const initialActiveUser = loadActiveUserFromStorage();
+      let activeUserId = initialActiveUser.id;
+      let activeUserName = initialActiveUser.name;
       let savedPasswords = JSON.parse(localStorage.getItem('userPasswords') || '{}');
       let createFormOpen = false;
       let adminSession = { username: '', password: '', authenticated: false };
@@ -532,8 +549,8 @@
       function logoutUser(updateUi = true) {
         activeUserId = null;
         activeUserName = '';
-        localStorage.removeItem('activeUserId');
-        localStorage.removeItem('activeUserName');
+        sessionStorage.removeItem('activeUserId');
+        sessionStorage.removeItem('activeUserName');
         document.getElementById('login-password').value = '';
         renderSessionHeader();
         if (updateUi) refreshActiveUser();
@@ -842,13 +859,13 @@
         if (!user) {
           activeUserId = null;
           activeUserName = '';
-          localStorage.removeItem('activeUserId');
-          localStorage.removeItem('activeUserName');
+          sessionStorage.removeItem('activeUserId');
+          sessionStorage.removeItem('activeUserName');
         } else {
           activeUserId = user.id;
           activeUserName = user.name;
-          localStorage.setItem('activeUserId', String(user.id));
-          localStorage.setItem('activeUserName', user.name);
+          sessionStorage.setItem('activeUserId', String(user.id));
+          sessionStorage.setItem('activeUserName', user.name);
         }
         renderSessionHeader();
         refreshActiveUser();
@@ -877,7 +894,9 @@
           activeUserId = null;
           activeUserName = '';
         }
-        const preferred = activeUserId || Number(localStorage.getItem('activeUserId') || initialUserFromQuery || '');
+        const preferred =
+          activeUserId ||
+          Number(sessionStorage.getItem('activeUserId') || localStorage.getItem('activeUserId') || initialUserFromQuery || '');
         if (!activeUserId && preferred) {
           const match = users.find((u) => u.id === preferred);
           if (match) {
@@ -932,8 +951,8 @@
         await loadLedger(userId);
         await loadPositions(userId);
         renderAdminMarkets();
-        localStorage.setItem('activeUserId', String(userId));
-        localStorage.setItem('activeUserName', activeUserName);
+        sessionStorage.setItem('activeUserId', String(userId));
+        sessionStorage.setItem('activeUserName', activeUserName);
         updateShareLink();
         if (appShell) appShell.classList.remove('hidden');
         if (logoutBtn) logoutBtn.disabled = false;

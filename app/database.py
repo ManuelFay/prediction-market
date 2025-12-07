@@ -10,7 +10,7 @@ from sqlmodel import SQLModel, Session, create_engine
 logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/prediction.db")
-RESET_DB_ON_STARTUP = os.getenv("RESET_DB_ON_STARTUP", "true").lower() == "true"
+RESET_DB_ON_STARTUP = os.getenv("RESET_DB_ON_STARTUP", "false").lower() == "true"
 
 if DATABASE_URL.startswith("sqlite:///"):
     db_path = Path(DATABASE_URL.replace("sqlite:///", "", 1))
