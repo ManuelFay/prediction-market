@@ -229,6 +229,7 @@
         <label for="new-user-name">New user name</label>
         <input id="new-user-name" placeholder="Alice" />
         <button onclick="createUser()">Create user (starts with 50€)</button>
+        <button class="secondary" onclick="resetPlatform()">Reset platform (delete all users)</button>
         <hr />
         <label for="active-user">Active user</label>
         <select id="active-user" onchange="refreshActiveUser()"></select>
@@ -315,6 +316,18 @@
         await loadUsers();
       }
 
+      async function resetPlatform() {
+        if (!confirm('This will delete all users, markets, and bets. Continue?')) return;
+        await fetchJSON('/reset', { method: 'POST' });
+        document.getElementById('balance').textContent = '–';
+        document.getElementById('positions-count').textContent = '–';
+        document.getElementById('ledger').innerHTML = '';
+        document.getElementById('positions').innerHTML = '';
+        selectedMarket = null;
+        await loadUsers();
+        await loadMarkets();
+      }
+
       async function deposit() {
         const userId = getActiveUserId();
         if (!userId) return;
@@ -397,6 +410,7 @@
       }
 
       async function loadUsers() {
+        const current = getActiveUserId();
         const users = await fetchJSON('/users');
         const select = document.getElementById('active-user');
         select.innerHTML = '<option value="">Select user</option>';
@@ -406,6 +420,12 @@
           opt.textContent = `${u.name} (balance ${u.balance.toFixed(2)}€)`;
           select.appendChild(opt);
         });
+        if (current && users.some((u) => u.id === current)) {
+          select.value = current;
+        } else if (!select.value && users.length) {
+          select.value = users[0].id;
+        }
+        await refreshActiveUser();
       }
 
       async function refreshActiveUser() {
@@ -519,6 +539,20 @@
           .join('');
       }
 
+      function renderPayouts(payouts = [], outcome) {
+        if (!payouts.length) return '<div class="muted">No payouts yet</div>';
+        return payouts
+          .map(
+            (p) => `
+              <div class="list-row small">
+                <div class="flex-between"><span class="pill">${p.entry_type}</span><span>User ${p.user_id}</span></div>
+                <div>${p.amount.toFixed(2)}€${p.note ? ` — ${p.note}` : ''}${outcome ? ` (Outcome: ${outcome})` : ''}</div>
+              </div>
+            `,
+          )
+          .join('');
+      }
+
       function formatProbability(p) {
         return `${(p * 100).toFixed(1)}%`;
       }
@@ -580,6 +614,19 @@
               `
             : '';
         const waitMsg = renderWaitMessage(market);
+        const resolutionPanel =
+          market.status === 'RESOLVED' || market.status === 'INVALID'
+            ? `
+                <div class="panel">
+                  <div class="label">Resolution breakdown</div>
+                  <div>Total pot: ${market.total_pot.toFixed(2)}€</div>
+                  <div>Creator settlement: ${market.creator_payout.toFixed(2)}€</div>
+                  <div>Winning payout: ${(market.total_payout_yes + market.total_payout_no).toFixed(2)}€</div>
+                  <h4>Payouts</h4>
+                  <div class="ledger-list">${renderPayouts(market.payouts, market.outcome)}</div>
+                </div>
+              `
+            : '';
         container.innerHTML = `
           <div class="market-card">
             <div class="flex-between">
@@ -614,6 +661,7 @@
             </div>
             ${renderOddsChart(market.odds_history)}
             ${waitMsg}
+            ${resolutionPanel}
             <div class="market-actions">
               <button onclick="placeBet(${market.id}, 'YES')">Bet 1€ YES</button>
               <button onclick="placeBet(${market.id}, 'NO')">Bet 1€ NO</button>

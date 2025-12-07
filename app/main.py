@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from sqlmodel import Session, select
+from sqlmodel import Session, select, delete
 
 from . import amm
 from .database import get_session, init_db
@@ -28,7 +28,10 @@ from .schemas import (
     ResolutionRequest,
     UserCreate,
     UserRead,
+    PayoutBreakdown,
 )
+
+MARKET_SEED = 10.0
 
 app = FastAPI(title="Friends Prediction Market", version="0.1.0")
 app.add_middleware(
@@ -81,6 +84,17 @@ def create_user(payload: UserCreate, session: Session = Depends(get_session)) ->
 @app.get("/users", response_model=List[UserRead])
 def list_users(session: Session = Depends(get_session)) -> List[User]:
     return session.exec(select(User)).all()
+
+
+@app.post("/reset", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
+def reset_state(session: Session = Depends(get_session)) -> Response:
+    session.exec(delete(LedgerEntry))
+    session.exec(delete(Bet))
+    session.exec(delete(Complaint))
+    session.exec(delete(Market))
+    session.exec(delete(User))
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.get("/users/{user_id}", response_model=UserRead)
@@ -158,7 +172,7 @@ def create_market(payload: MarketCreate, user_id: int, session: Session = Depend
     if user.balance < 10:
         raise HTTPException(status_code=400, detail="Insufficient balance for seed")
 
-    q_yes, q_no = amm.initial_q_values(payload.initial_prob_yes, subsidy=10.0, b=payload.liquidity_b)
+    q_yes, q_no = amm.initial_q_values(payload.initial_prob_yes, subsidy=MARKET_SEED, b=payload.liquidity_b)
 
     market = Market(
         question=payload.question,
@@ -172,10 +186,19 @@ def create_market(payload: MarketCreate, user_id: int, session: Session = Depend
         q_no=q_no,
         creator_id=user.id,
         event_time=payload.event_time,
+        total_pot=MARKET_SEED,
     )
-    user.balance -= 10
-    add_ledger_entry(session, user.id, market_id=None, amount=-10, entry_type=LedgerType.DEPOSIT_SEED, note="Market seed")
+    user.balance -= MARKET_SEED
     session.add(market)
+    session.flush()
+    add_ledger_entry(
+        session,
+        user.id,
+        market_id=market.id,
+        amount=-MARKET_SEED,
+        entry_type=LedgerType.DEPOSIT_SEED,
+        note="Market seed",
+    )
     session.commit()
     session.refresh(market)
     return market_read(market)
@@ -197,7 +220,14 @@ def get_market(market_id: int, session: Session = Depends(get_session)) -> Marke
     odds_history = compute_odds_history(market, bets)
     volume_yes = sum(b.cost for b in bets if b.side.upper() == "YES")
     volume_no = sum(b.cost for b in bets if b.side.upper() == "NO")
-    return MarketWithBets(**market_data.dict(), bets=bets, odds_history=odds_history, volume_yes=volume_yes, volume_no=volume_no)
+    return MarketWithBets(
+        **market_data.dict(),
+        bets=bets,
+        odds_history=odds_history,
+        volume_yes=volume_yes,
+        volume_no=volume_no,
+        payouts=payout_breakdown(session, market),
+    )
 
 
 @app.post("/markets/{market_id}/bet", response_model=BetRead, status_code=status.HTTP_201_CREATED)
@@ -268,6 +298,10 @@ def resolve_market(market_id: int, payload: ResolutionRequest, session: Session 
 
     if outcome == "INVALID":
         refund_invalid_market(session, market)
+        market.total_payout_yes = 0.0
+        market.total_payout_no = 0.0
+        market.creator_payout = 0.0
+        market.total_pot = 0.0
     else:
         pay_winners(session, market, outcome)
     market.status = MarketStatus.RESOLVED if outcome != "INVALID" else MarketStatus.INVALID
@@ -356,11 +390,15 @@ def market_read(market: Market) -> MarketRead:
         last_bet_at=market.last_bet_at,
         yes_preview=BetPreview(payout=yes_payout, probability=yes_probability),
         no_preview=BetPreview(payout=no_payout, probability=no_probability),
+        total_pot=market.total_pot,
+        total_payout_yes=market.total_payout_yes,
+        total_payout_no=market.total_payout_no,
+        creator_payout=market.creator_payout,
     )
 
 
 def compute_odds_history(market: Market, bets: list[Bet]) -> list[OddsPoint]:
-    q_yes, q_no = amm.initial_q_values(market.initial_prob_yes, subsidy=10.0, b=market.liquidity_b)
+    q_yes, q_no = amm.initial_q_values(market.initial_prob_yes, subsidy=MARKET_SEED, b=market.liquidity_b)
     history: list[OddsPoint] = []
 
     initial_price = amm.price_yes(q_yes, q_no, market.liquidity_b)
@@ -388,14 +426,37 @@ def compute_bet_preview(market: Market, side: str) -> tuple[float, float]:
 
 def pay_winners(session: Session, market: Market, outcome: str) -> None:
     bets = session.exec(select(Bet).where(Bet.market_id == market.id)).all()
+    total_bets = sum(bet.cost for bet in bets)
+    market.total_pot = MARKET_SEED + total_bets
+
+    total_winner_payout = 0.0
     for bet in bets:
         if bet.side == outcome:
-            payout = bet.shares * 1.0
+            payout = bet.shares
+            total_winner_payout += payout
             user = session.get(User, bet.user_id)
             if user:
                 user.balance += payout
-                add_ledger_entry(session, user.id, market.id, payout, LedgerType.PAYOUT, note="Market payout")
+                add_ledger_entry(session, user.id, market.id, payout, LedgerType.PAYOUT, note="Winner payout")
                 session.add(user)
+
+    market.total_payout_yes = total_winner_payout if outcome == "YES" else 0.0
+    market.total_payout_no = total_winner_payout if outcome == "NO" else 0.0
+
+    creator = session.get(User, market.creator_id)
+    creator_payout = market.total_pot - total_winner_payout
+    market.creator_payout = creator_payout
+    if creator:
+        creator.balance += creator_payout
+        add_ledger_entry(
+            session,
+            creator.id,
+            market.id,
+            creator_payout,
+            LedgerType.CREATOR_PAYOUT,
+            note="Creator settlement",
+        )
+        session.add(creator)
 
 
 def refund_invalid_market(session: Session, market: Market) -> None:
@@ -409,9 +470,22 @@ def refund_invalid_market(session: Session, market: Market) -> None:
     # Return the seed to the creator when possible
     creator = session.get(User, market.creator_id)
     if creator:
-        creator.balance += 10
-        add_ledger_entry(session, creator.id, market.id, 10, LedgerType.REFUND, note="Seed returned")
+        creator.balance += MARKET_SEED
+        add_ledger_entry(session, creator.id, market.id, MARKET_SEED, LedgerType.REFUND, note="Seed returned")
         session.add(creator)
+
+
+def payout_breakdown(session: Session, market: Market) -> list[PayoutBreakdown]:
+    entries = session.exec(
+        select(LedgerEntry).where(
+            LedgerEntry.market_id == market.id,
+            LedgerEntry.entry_type.in_([LedgerType.PAYOUT, LedgerType.CREATOR_PAYOUT, LedgerType.REFUND]),
+        )
+    ).all()
+    return [
+        PayoutBreakdown(user_id=entry.user_id, amount=entry.amount, entry_type=entry.entry_type, note=entry.note)
+        for entry in entries
+    ]
 
 
 @app.get("/health")

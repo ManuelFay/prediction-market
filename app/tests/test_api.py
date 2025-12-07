@@ -1,4 +1,9 @@
 from datetime import timedelta
+import random
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pytest
 from fastapi.testclient import TestClient
@@ -140,3 +145,52 @@ def test_resolve_market_pays_winners(client: TestClient) -> None:
     new_q_yes, _ = amm.shares_for_cost(1.0, "YES", init_q_yes, init_q_no, 5.0)
     expected_shares = new_q_yes - init_q_yes
     assert bet_yes["shares"] == pytest.approx(expected_shares)
+
+
+def test_random_bets_zero_sum_and_payout_breakdown(client: TestClient) -> None:
+    random.seed(1234)
+    users = [create_user(client, f"User {idx}") for idx in range(4)]
+    creator = users[0]
+    market = create_market(client, creator["id"])
+
+    def place_or_wait(user_id: int, side: str) -> None:
+        resp = client.post(f"/markets/{market['id']}/bet?user_id={user_id}", json={"side": side})
+        if resp.status_code == 429:
+            with Session(client.app.state.test_engine) as session:
+                market_row = session.get(Market, market["id"])
+                market_row.last_bet_at = market_row.last_bet_at - timedelta(seconds=10)
+                session.add(market_row)
+                session.commit()
+            client.post(f"/markets/{market['id']}/bet?user_id={user_id}", json={"side": side})
+
+    bettors = [u["id"] for u in users]
+    for _ in range(20):
+        place_or_wait(random.choice(bettors), random.choice(["YES", "NO"]))
+
+    outcome = random.choice(["YES", "NO"])
+    resolve_resp = client.post(f"/markets/{market['id']}/resolve", json={"outcome": outcome})
+    assert resolve_resp.status_code == 200
+
+    resolved_market = client.get(f"/markets/{market['id']}").json()
+    pot = resolved_market["total_pot"]
+    total_payout = resolved_market["total_payout_yes"] + resolved_market["total_payout_no"]
+    creator_payout = resolved_market["creator_payout"]
+    assert pot == pytest.approx(total_payout + creator_payout)
+    assert resolved_market["payouts"], "Payout breakdown should be populated"
+
+    all_users = client.get("/users").json()
+    total_balance = sum(u["balance"] for u in all_users)
+    assert total_balance == pytest.approx(50.0 * len(all_users))
+
+
+def test_reset_endpoint_clears_state(client: TestClient) -> None:
+    user = create_user(client, "Temp")
+    market = create_market(client, user["id"])
+    assert market["id"]
+
+    reset_resp = client.post("/reset")
+    assert reset_resp.status_code == 204
+
+    users_after = client.get("/users")
+    assert users_after.status_code == 200
+    assert users_after.json() == []
