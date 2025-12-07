@@ -1,6 +1,7 @@
 import enum
 from datetime import datetime
 from typing import List, Optional
+from uuid import uuid4
 
 from sqlmodel import SQLModel, Field, Relationship
 
@@ -17,6 +18,7 @@ class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
     balance: float = 50.0
+    password: str = Field(default_factory=lambda: uuid4().hex)
 
     markets: List["Market"] = Relationship(back_populates="creator")
     bets: List["Bet"] = Relationship(back_populates="user")
