@@ -46,6 +46,7 @@ class Market(SQLModel, table=True):
     total_payout_yes: float = 0.0
     total_payout_no: float = 0.0
     creator_payout: float = 0.0
+    is_deleted: bool = False
 
     creator: "User" = Relationship(back_populates="markets")
     bets: List["Bet"] = Relationship(back_populates="market")
