@@ -39,6 +39,26 @@ def _reset_database() -> None:
             os.remove(db_path)
 
 
+def ensure_market_deleted_flag(engine_obj=engine) -> None:
+    """Backfill the ``is_deleted`` column for legacy SQLite databases."""
+
+    url = str(engine_obj.url)
+    if not url.startswith("sqlite"):
+        return
+
+    with engine_obj.connect() as conn:
+        table_exists = conn.exec_driver_sql(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='market'"
+        ).first()
+        if not table_exists:
+            return
+
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(market);")}
+        if "is_deleted" not in columns:
+            logger.info("Adding missing is_deleted column to market table")
+            conn.exec_driver_sql("ALTER TABLE market ADD COLUMN is_deleted BOOLEAN NOT NULL DEFAULT 0")
+
+
 def init_db() -> None:
     """Reset and recreate the database.
 
@@ -49,6 +69,7 @@ def init_db() -> None:
     if RESET_DB_ON_STARTUP:
         _reset_database()
     SQLModel.metadata.create_all(engine)
+    ensure_market_deleted_flag()
 
 
 def get_session() -> Session:

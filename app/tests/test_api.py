@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel, Session, create_engine
 
 from app import amm
+from app.database import ensure_market_deleted_flag
 from app.main import MARKET_SEED, app, get_session
 
 
@@ -183,6 +184,46 @@ def test_market_delete_hides_from_list_and_keeps_history(client: TestClient) -> 
 
     ledger_entries = client.get(f"/users/{user['id']}/ledger").json()
     assert len(ledger_entries) == 3  # STARTING_BALANCE, DEPOSIT_SEED, BET_DEBIT
+
+
+def test_legacy_databases_gain_deleted_flag_on_init(tmp_path) -> None:
+    db_path = tmp_path / "legacy.db"
+    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+
+    legacy_schema_sql = """
+    CREATE TABLE market (
+        id INTEGER PRIMARY KEY,
+        question VARCHAR,
+        description VARCHAR,
+        yes_meaning VARCHAR,
+        no_meaning VARCHAR,
+        resolution_source VARCHAR,
+        initial_prob_yes FLOAT,
+        liquidity_b FLOAT,
+        q_yes FLOAT,
+        q_no FLOAT,
+        created_at DATETIME,
+        status VARCHAR,
+        outcome VARCHAR,
+        event_time DATETIME,
+        creator_id INTEGER,
+        last_bet_at DATETIME,
+        total_pot FLOAT,
+        total_payout_yes FLOAT,
+        total_payout_no FLOAT,
+        creator_payout FLOAT
+    );
+    """
+
+    with engine.connect() as conn:
+        conn.exec_driver_sql(legacy_schema_sql)
+
+    ensure_market_deleted_flag(engine)
+
+    with engine.connect() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(market);")}
+
+    assert "is_deleted" in columns
 
 
 def test_market_creation_rejects_out_of_range_probabilities(client: TestClient) -> None:
