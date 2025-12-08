@@ -69,11 +69,12 @@ def create_market(client: TestClient, creator_id: int) -> dict:
         "no_meaning": "No",
         "resolution_source": "Weather API",
         "initial_prob_yes": 0.5,
-        "liquidity_b": 5.0,
     }
     response = client.post(f"/markets?user_id={creator_id}", json=payload)
     assert response.status_code == 201
-    return response.json()
+    market = response.json()
+    assert market["liquidity_b"] == pytest.approx(5.0)
+    return market
 
 
 def create_market_with_prob(client: TestClient, creator_id: int, prob_yes: float) -> dict:
@@ -84,11 +85,12 @@ def create_market_with_prob(client: TestClient, creator_id: int, prob_yes: float
         "no_meaning": "No",
         "resolution_source": "",
         "initial_prob_yes": prob_yes,
-        "liquidity_b": 5.0,
     }
     response = client.post(f"/markets?user_id={creator_id}", json=payload)
     assert response.status_code == 201
-    return response.json()
+    market = response.json()
+    assert market["liquidity_b"] == pytest.approx(5.0)
+    return market
 
 
 def test_market_detail_includes_odds_history_and_volume(client: TestClient) -> None:
@@ -234,7 +236,6 @@ def test_market_creation_rejects_out_of_range_probabilities(client: TestClient) 
         json={
             "question": "Out of range?",
             "initial_prob_yes": 0.95,
-            "liquidity_b": 5.0,
         },
     )
     assert too_high.status_code == 422
@@ -244,7 +245,6 @@ def test_market_creation_rejects_out_of_range_probabilities(client: TestClient) 
         json={
             "question": "Out of range?",
             "initial_prob_yes": 0.05,
-            "liquidity_b": 5.0,
         },
     )
     assert too_low.status_code == 422
@@ -258,7 +258,6 @@ def test_creator_loss_is_capped_by_seed(client: TestClient) -> None:
         json={
             "question": "Will the cap trigger?",
             "initial_prob_yes": 0.1,
-            "liquidity_b": 0.5,
         },
     )
     assert market_resp.status_code == 201

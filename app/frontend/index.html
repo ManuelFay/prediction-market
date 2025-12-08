@@ -118,6 +118,32 @@
         background: #111827;
         border: 1px solid #334155;
       }
+
+      .create-toggle {
+        width: auto;
+        padding: 10px 16px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: linear-gradient(120deg, #22c55e, #3b82f6);
+        color: #0b1021;
+        text-align: center;
+        box-shadow: 0 10px 30px rgba(34, 197, 94, 0.25);
+        white-space: nowrap;
+      }
+
+      .create-toggle .icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.2);
+        color: #ecfeff;
+        font-size: 18px;
+        line-height: 1;
+      }
       .metrics {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -398,7 +424,10 @@
                 <div class="label">Active account</div>
                 <div class="value" id="menu-user-name">–</div>
               </div>
-              <button class="secondary" id="create-toggle" onclick="toggleCreateForm()">Create new market</button>
+              <button class="create-toggle" id="create-toggle" onclick="toggleCreateForm()">
+                <span class="icon">+</span>
+                <span class="label">New market</span>
+              </button>
             </div>
             <div id="create-panel" class="panel hidden">
               <div class="flex-between small"><span>Seed: 10€ will be locked from creator.</span><span>Bet size: fixed 1€</span></div>
@@ -408,8 +437,6 @@
               <textarea id="description" placeholder="Resolution rules, notes"></textarea>
               <label for="initial-prob">Initial probability for YES (0-1)</label>
               <input id="initial-prob" type="number" step="0.01" value="0.5" />
-              <label for="liquidity-b">Liquidity b (controls slippage)</label>
-              <input id="liquidity-b" type="number" step="0.5" value="5" />
               <button onclick="createMarket()">Create market</button>
             </div>
             <div id="open-markets"></div>
@@ -510,6 +537,14 @@
             document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
           });
         }
+      }
+
+      function setCreateToggleLabel(isOpen) {
+        const button = document.getElementById('create-toggle');
+        if (!button) return;
+        button.innerHTML = isOpen
+          ? '<span class="icon">–</span><span class="label">Hide form</span>'
+          : '<span class="icon">+</span><span class="label">New market</span>';
       }
 
       function adminHeaders() {
@@ -789,7 +824,7 @@
         if (!userId) return alert('Log in to create a market.');
         createFormOpen = !createFormOpen;
         document.getElementById('create-panel').classList.toggle('hidden', !createFormOpen);
-        document.getElementById('create-toggle').textContent = createFormOpen ? 'Hide market form' : 'Create new market';
+        setCreateToggleLabel(createFormOpen);
         if (createFormOpen) {
           document.getElementById('create-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
@@ -802,14 +837,13 @@
           question: document.getElementById('question').value,
           description: document.getElementById('description').value,
           initial_prob_yes: Number(document.getElementById('initial-prob').value),
-          liquidity_b: Number(document.getElementById('liquidity-b').value),
         };
         await fetchJSON(`/markets?user_id=${userId}`, { method: 'POST', body: JSON.stringify(payload) });
         document.getElementById('question').value = '';
         document.getElementById('description').value = '';
         createFormOpen = false;
         document.getElementById('create-panel').classList.add('hidden');
-        document.getElementById('create-toggle').textContent = 'Create new market';
+        setCreateToggleLabel(createFormOpen);
         await loadMarkets();
         await refreshActiveUser();
         switchTab('open');
@@ -1287,6 +1321,7 @@
         updateAdminStatus();
         switchTab('open');
         renderAdminDirectory();
+        setCreateToggleLabel(createFormOpen);
         await refreshData();
       }
 
