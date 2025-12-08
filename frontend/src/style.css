@@ -1,0 +1,256 @@
+:root {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #0b1021;
+  color: #e2e8f0;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at top left, rgba(59, 130, 246, 0.08), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(16, 185, 129, 0.08), transparent 25%),
+    #0b1021;
+}
+
+a {
+  color: #93c5fd;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  background: #0f172a;
+  padding: 18px 24px;
+  border-bottom: 1px solid #1f2937;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.content {
+  padding: 20px 24px 32px;
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.surface {
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid #1f2937;
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+}
+
+.panel.soft {
+  background: rgba(17, 24, 39, 0.65);
+  border-color: #1f2937;
+}
+
+.panel h2 {
+  margin-top: 0;
+  font-size: 18px;
+}
+
+label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+input,
+select,
+textarea,
+button {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  border: 1px solid #1f2937;
+  background: #0b1221;
+  color: #e2e8f0;
+}
+
+button {
+  cursor: pointer;
+  background: linear-gradient(90deg, #14b8a6, #3b82f6);
+  border: none;
+  font-weight: 700;
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+  text-align: left;
+}
+
+button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 30px rgba(59, 130, 246, 0.25);
+}
+
+button.secondary {
+  background: #111827;
+  border: 1px solid #334155;
+}
+
+button.inline {
+  width: auto;
+}
+
+.flex-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.metric {
+  background: #0b1221;
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.metric .label {
+  color: #94a3b8;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.metric .value {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.market-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #1f2937;
+  background: #0b1221;
+  margin-bottom: 12px;
+}
+
+.market-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.bets-list,
+.ledger-list {
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+}
+
+.list-row {
+  border-bottom: 1px solid #1f2937;
+  padding: 8px 10px;
+}
+
+.list-row:last-child {
+  border-bottom: none;
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #0f172a;
+  border: 1px solid #1f2937;
+  font-size: 12px;
+}
+
+.tag.success {
+  background: rgba(34, 197, 94, 0.2);
+  border-color: #22c55e;
+  color: #bef264;
+}
+
+.tag.danger {
+  background: rgba(248, 113, 113, 0.2);
+  border-color: #f87171;
+  color: #fecdd3;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #14b8a6, #2563eb);
+  color: #0b1021;
+  font-weight: 700;
+  border: 1px solid #38bdf8;
+}
+
+.pill.ghost {
+  background: #0b1221;
+  color: #e2e8f0;
+  border-color: #1f2937;
+}
+
+.small {
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.muted {
+  color: #94a3b8;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: #1f2937;
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid #1f2937;
+  margin: 12px 0;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 1080px) {
+  .content {
+    grid-template-columns: 1fr;
+  }
+}
