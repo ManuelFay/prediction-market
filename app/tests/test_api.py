@@ -158,6 +158,33 @@ def test_probability_guards_block_extreme_sides(client: TestClient) -> None:
     assert yes_allowed.status_code == 201
 
 
+def test_market_delete_hides_from_list_and_keeps_history(client: TestClient) -> None:
+    user = create_user(client)
+    market = create_market(client, user["id"])
+
+    bet_resp = client.post(
+        f"/markets/{market['id']}/bet?user_id={user['id']}",
+        json={"side": "YES", "password": user["password"]},
+    )
+    assert bet_resp.status_code == 201
+
+    delete_resp = client.delete(f"/markets/{market['id']}?user_id={user['id']}")
+    assert delete_resp.status_code == 204
+
+    market_list = client.get("/markets").json()
+    assert market_list == []
+
+    detail_resp = client.get(f"/markets/{market['id']}")
+    assert detail_resp.status_code == 200
+    deleted_market = detail_resp.json()
+    assert deleted_market["is_deleted"] is True
+    assert deleted_market["status"] == "CLOSED"
+    assert len(deleted_market["bets"]) == 1
+
+    ledger_entries = client.get(f"/users/{user['id']}/ledger").json()
+    assert len(ledger_entries) == 3  # STARTING_BALANCE, DEPOSIT_SEED, BET_DEBIT
+
+
 def test_market_creation_rejects_out_of_range_probabilities(client: TestClient) -> None:
     user = create_user(client)
 

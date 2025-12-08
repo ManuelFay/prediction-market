@@ -305,7 +305,7 @@ def create_market(payload: MarketCreate, user_id: int, session: Session = Depend
 
 @app.get("/markets", response_model=List[MarketRead])
 def list_markets(session: Session = Depends(get_session)) -> List[MarketRead]:
-    markets = session.exec(select(Market)).all()
+    markets = session.exec(select(Market).where(Market.is_deleted.is_(False))).all()
     return [market_read(m, session) for m in markets]
 
 
@@ -334,6 +334,8 @@ def place_bet(market_id: int, payload: BetCreate, user_id: int, session: Session
     market = session.get(Market, market_id)
     if not market:
         raise HTTPException(status_code=404, detail="Market not found")
+    if market.is_deleted:
+        raise HTTPException(status_code=400, detail="Market has been deleted")
     if market.status != MarketStatus.OPEN:
         raise HTTPException(status_code=400, detail="Market not open")
     user = session.get(User, user_id)
@@ -435,44 +437,9 @@ def delete_market(market_id: int, user_id: int, session: Session = Depends(get_s
     if market.creator_id != user_id:
         raise HTTPException(status_code=403, detail="Only the creator can delete this market")
 
-    bets = session.exec(select(Bet).where(Bet.market_id == market_id)).all()
-    for bet in bets:
-        bettor = session.get(User, bet.user_id)
-        if bettor:
-            bettor.balance += bet.cost
-            add_ledger_entry(
-                session,
-                bettor.id,
-                market_id=market.id,
-                amount=bet.cost,
-                entry_type=LedgerType.REFUND,
-                note="Market deleted refund",
-            )
-            session.add(bettor)
-        session.delete(bet)
-
-    complaints = session.exec(select(Complaint).where(Complaint.market_id == market_id)).all()
-    for complaint in complaints:
-        session.delete(complaint)
-
-    ledger_entries = session.exec(select(LedgerEntry).where(LedgerEntry.market_id == market_id)).all()
-    for entry in ledger_entries:
-        session.delete(entry)
-
-    creator = session.get(User, market.creator_id)
-    if creator:
-        creator.balance += 10
-        add_ledger_entry(
-            session,
-            creator.id,
-            market_id=None,
-            amount=10,
-            entry_type=LedgerType.REFUND,
-            note="Seed returned (market deleted)",
-        )
-        session.add(creator)
-
-    session.delete(market)
+    market.status = MarketStatus.CLOSED
+    market.is_deleted = True
+    session.add(market)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -517,6 +484,7 @@ def market_read(market: Market, session: Optional[Session] = None) -> MarketRead
         total_payout_no=market.total_payout_no,
         creator_payout=market.creator_payout,
         creator_name=creator_name,
+        is_deleted=market.is_deleted,
     )
 
 

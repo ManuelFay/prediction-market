@@ -3,6 +3,7 @@
 A minimal FastAPI backend and lightweight browser frontend that implements the LMSR-style AMM described in the spec: users get starting balances, can create binary markets with seeded liquidity, place 1€ bets, and resolve/complain on outcomes. Data persists to a local SQLite database.
 
 For a walkthrough of common flows, see [USER_GUIDE.md](USER_GUIDE.md).
+For a deep dive into pricing math and guardrails, read [docs/odds.md](docs/odds.md).
 
 ## Quickstart
 

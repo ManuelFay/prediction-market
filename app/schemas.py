@@ -84,6 +84,7 @@ class MarketRead(BaseModel):
     total_payout_yes: float
     total_payout_no: float
     creator_payout: float
+    is_deleted: bool
 
     class Config:
         from_attributes = True
