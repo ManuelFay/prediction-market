@@ -4,11 +4,10 @@ This system uses a **Logarithmic Market Scoring Rule (LMSR)** automated market m
 
 ## Initialisation
 
-When a market is created, the initial share quantities are seeded so that the starting probability matches the requested ``initial_prob_yes`` while embedding the creator's subsidy ``S`` (``MARKET_SEED``):
+When a market is created, the initial share quantities are seeded so that the starting probability matches the requested ``initial_prob_yes`` while embedding the creator's subsidy ``S`` (``MARKET_SEED``). The liquidity parameter is fixed at ``b = 5`` for every market; it is not adjusted for skewed probabilities or user input.
 
 - Base inventories: ``q_yes = b * ln(p)`` and ``q_no = b * ln(1 - p)`` where ``p`` is the initial yes probability.
 - The subsidy is injected by shifting both inventories equally: ``q_yes' = q_yes + S`` and ``q_no' = q_no + S``. This keeps the initial price unchanged while increasing the cost function by ``S``.
-- If the initial probability is far from 50%, liquidity is boosted by ``adjusted_liquidity``: ``b' = b * (1 + |p - 0.5| * 0.5)``.
 
 ## Price formula
 

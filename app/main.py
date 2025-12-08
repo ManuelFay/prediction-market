@@ -37,6 +37,10 @@ from .schemas import (
 )
 
 MARKET_SEED = 10.0
+DEFAULT_LIQUIDITY_B = 5.0
+PRICE_CLIP_LOW = 0.1
+PRICE_CLIP_HIGH = 0.9
+PRICE_EPSILON = 1e-6
 
 app = FastAPI(title="Friends Prediction Market", version="0.1.0")
 app.add_middleware(
@@ -77,18 +81,6 @@ def require_admin(credentials: HTTPBasicCredentials = Depends(security)) -> None
 def add_ledger_entry(session: Session, user_id: int, market_id: int | None, amount: float, entry_type: LedgerType, note: str | None = None) -> None:
     entry = LedgerEntry(user_id=user_id, market_id=market_id, amount=amount, entry_type=entry_type, note=note)
     session.add(entry)
-
-
-def adjusted_liquidity(initial_prob: float, base_liquidity: float) -> float:
-    """Boost liquidity when markets start far from 50% to curb volatility.
-
-    A small multiplier keeps prices smoother in skewed markets, reducing the
-    chance of running into the creator loss cap after only a handful of bets.
-    """
-
-    skew = abs(initial_prob - 0.5)
-    # Up to a 50% boost when starting at the edges of the allowed range.
-    return base_liquidity * (1 + skew * 0.5)
 
 
 def market_exposure(session: Session, market_id: int) -> tuple[float, float, float]:
@@ -269,7 +261,7 @@ def create_market(payload: MarketCreate, user_id: int, session: Session = Depend
     if not 0.1 <= payload.initial_prob_yes <= 0.9:
         raise HTTPException(status_code=400, detail="Initial probability must be between 10% and 90%")
 
-    liquidity_b = adjusted_liquidity(payload.initial_prob_yes, payload.liquidity_b)
+    liquidity_b = DEFAULT_LIQUIDITY_B
 
     q_yes, q_no = amm.initial_q_values(payload.initial_prob_yes, subsidy=MARKET_SEED, b=liquidity_b)
 
@@ -352,9 +344,9 @@ def place_bet(market_id: int, payload: BetCreate, user_id: int, session: Session
         raise HTTPException(status_code=400, detail="Side must be YES or NO")
 
     price_yes = amm.price_yes(market.q_yes, market.q_no, market.liquidity_b)
-    if side == "YES" and price_yes >= 0.9:
+    if side == "YES" and price_yes >= PRICE_CLIP_HIGH - PRICE_EPSILON:
         raise HTTPException(status_code=400, detail="YES betting disabled at or above 90% probability")
-    if side == "NO" and price_yes <= 0.1:
+    if side == "NO" and price_yes <= PRICE_CLIP_LOW + PRICE_EPSILON:
         raise HTTPException(status_code=400, detail="NO betting disabled at or below 10% probability")
 
     new_q_yes, new_q_no = amm.shares_for_cost(1.0, side, market.q_yes, market.q_no, market.liquidity_b)
