@@ -89,9 +89,10 @@ kept between restarts.
 
 ## Risk controls & pricing guardrails
 
+For a deep dive into pricing math and guardrails, read [docs/odds.md](docs/odds.md).
+
 - **Probability clamps**: Markets must launch between 10% and 90% initial probability, and live odds stay within that band (bets on YES are blocked at/above 90%, bets on NO at/below 10%).
 - **Creator loss cap**: The AMM will not mint shares that could pay out more than the 10€ seed + all collected stakes if the market resolved immediately. Excessively dilutive bets are rejected with an error.
-- **Skew-aware liquidity**: Markets that start away from 50% automatically bump their `liquidity_b` slightly to smooth prices and reduce how often the loss cap triggers.
 
 ## AMM implementation notes
 
