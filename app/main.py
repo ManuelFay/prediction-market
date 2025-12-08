@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlmodel import Session, select, delete
 
 from . import amm
@@ -305,7 +305,8 @@ def create_market(payload: MarketCreate, user_id: int, session: Session = Depend
 
 @app.get("/markets", response_model=List[MarketRead])
 def list_markets(session: Session = Depends(get_session)) -> List[MarketRead]:
-    markets = session.exec(select(Market).where(Market.is_deleted.is_(False))).all()
+    visibility_filter = or_(Market.is_deleted.is_(False), Market.is_deleted.is_(None))
+    markets = session.exec(select(Market).where(visibility_filter)).all()
     return [market_read(m, session) for m in markets]
 
 
