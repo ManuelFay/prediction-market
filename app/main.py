@@ -5,7 +5,7 @@ from pathlib import Path
 import secrets
 from typing import List, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -15,12 +15,16 @@ from sqlmodel import Session, select, delete
 
 from . import amm
 from .database import get_session, init_db
-from .models import Bet, Complaint, LedgerEntry, LedgerType, Market, MarketStatus, User
+from .models import Bet, Comment, Complaint, LedgerEntry, LedgerType, Market, MarketStatus, User
 from .schemas import (
     BetCreate,
     BetRead,
     BetPreview,
     ComplaintCreate,
+    CommentCreate,
+    CommentDeleteRequest,
+    CommentPage,
+    CommentRead,
     DepositRequest,
     LedgerEntryRead,
     MarketCreate,
@@ -41,6 +45,7 @@ DEFAULT_LIQUIDITY_B = 5.0
 PRICE_CLIP_LOW = 0.1
 PRICE_CLIP_HIGH = 0.9
 PRICE_EPSILON = 1e-6
+COMMENT_MAX_LENGTH = 280
 
 app = FastAPI(title="Friends Prediction Market", version="0.1.0")
 app.add_middleware(
@@ -89,6 +94,21 @@ def market_exposure(session: Session, market_id: int) -> tuple[float, float, flo
     total_no_shares = sum(bet.shares for bet in bets if bet.side.upper() == "NO")
     total_staked = sum(bet.cost for bet in bets)
     return total_yes_shares, total_no_shares, total_staked
+
+
+def comment_read(comment: Comment, market: Optional[Market] = None, session: Optional[Session] = None) -> CommentRead:
+    market_obj = market
+    if not market_obj and session:
+        market_obj = session.get(Market, comment.market_id)
+    creator_id = market_obj.creator_id if market_obj else None
+    return CommentRead(
+        id=comment.id,
+        market_id=comment.market_id,
+        user_id=comment.user_id,
+        text=comment.text,
+        created_at=comment.created_at,
+        is_op=creator_id is not None and comment.user_id == creator_id,
+    )
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -145,6 +165,7 @@ def reset_state(session: Session = Depends(get_session), _: None = Depends(requi
     session.exec(delete(LedgerEntry))
     session.exec(delete(Bet))
     session.exec(delete(Complaint))
+    session.exec(delete(Comment))
     session.exec(delete(Market))
     session.exec(delete(User))
     session.commit()
@@ -393,6 +414,93 @@ def add_complaint(market_id: int, payload: ComplaintCreate, user_id: int, sessio
     session.commit()
     session.refresh(complaint)
     return complaint
+
+
+@app.get("/markets/{market_id}/comments", response_model=CommentPage)
+def list_comments(
+    market_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=50),
+    session: Session = Depends(get_session),
+) -> CommentPage:
+    market = session.get(Market, market_id)
+    if not market:
+        raise HTTPException(status_code=404, detail="Market not found")
+
+    stmt = (
+        select(Comment)
+        .where(Comment.market_id == market_id, Comment.is_deleted.is_(False))
+        .order_by(Comment.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size + 1)
+    )
+    comments = session.exec(stmt).all()
+    has_more = len(comments) > page_size
+    items = comments[:page_size]
+
+    return CommentPage(
+        items=[comment_read(c, market=market) for c in items],
+        page=page,
+        page_size=page_size,
+        has_more=has_more,
+    )
+
+
+@app.post("/markets/{market_id}/comments", response_model=CommentRead, status_code=status.HTTP_201_CREATED)
+def add_comment(
+    market_id: int,
+    payload: CommentCreate,
+    user_id: int,
+    session: Session = Depends(get_session),
+) -> CommentRead:
+    market = session.get(Market, market_id)
+    if not market:
+        raise HTTPException(status_code=404, detail="Market not found")
+    if market.is_deleted:
+        raise HTTPException(status_code=400, detail="Market has been deleted")
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if payload.password != user.password:
+        raise HTTPException(status_code=403, detail="Invalid password")
+
+    text = payload.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Comment cannot be empty")
+    if len(text) > COMMENT_MAX_LENGTH:
+        raise HTTPException(status_code=400, detail=f"Comment exceeds {COMMENT_MAX_LENGTH} characters")
+
+    comment = Comment(user_id=user.id, market_id=market.id, text=text)
+    session.add(comment)
+    session.commit()
+    session.refresh(comment)
+    return comment_read(comment, market=market)
+
+
+@app.delete("/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
+def delete_comment(
+    comment_id: int,
+    user_id: int,
+    payload: CommentDeleteRequest,
+    session: Session = Depends(get_session),
+) -> Response:
+    comment = session.get(Comment, comment_id)
+    if not comment or comment.is_deleted:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    if comment.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Only the author can delete this comment")
+
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if payload.password != user.password:
+        raise HTTPException(status_code=403, detail="Invalid password")
+
+    comment.is_deleted = True
+    comment.deleted_at = datetime.utcnow()
+    session.add(comment)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.post("/markets/{market_id}/resolve", response_model=MarketRead)

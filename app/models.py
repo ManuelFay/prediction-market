@@ -23,6 +23,7 @@ class User(SQLModel, table=True):
     markets: List["Market"] = Relationship(back_populates="creator")
     bets: List["Bet"] = Relationship(back_populates="user")
     transactions: List["LedgerEntry"] = Relationship(back_populates="user")
+    comments: List["Comment"] = Relationship(back_populates="user")
 
 
 class Market(SQLModel, table=True):
@@ -51,6 +52,7 @@ class Market(SQLModel, table=True):
     creator: "User" = Relationship(back_populates="markets")
     bets: List["Bet"] = Relationship(back_populates="market")
     complaints: List["Complaint"] = Relationship(back_populates="market")
+    comments: List["Comment"] = Relationship(back_populates="market")
 
 
 class Bet(SQLModel, table=True):
@@ -96,3 +98,16 @@ class Complaint(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     market: "Market" = Relationship(back_populates="complaints")
+
+
+class Comment(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    market_id: int = Field(foreign_key="market.id")
+    user_id: int = Field(foreign_key="user.id")
+    text: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    is_deleted: bool = False
+    deleted_at: Optional[datetime] = None
+
+    market: "Market" = Relationship(back_populates="comments")
+    user: "User" = Relationship(back_populates="comments")

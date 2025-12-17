@@ -362,6 +362,54 @@ def test_random_bets_zero_sum_and_payout_breakdown(client: TestClient) -> None:
     assert total_balance == pytest.approx(50.0 * len(all_users))
 
 
+def test_comments_flow_and_soft_delete(client: TestClient) -> None:
+    creator = create_user(client, "Creator")
+    market = create_market(client, creator["id"])
+
+    # Creator comment (should be tagged as OP)
+    comment_resp = client.post(
+        f"/markets/{market['id']}/comments?user_id={creator['id']}",
+        json={"text": "First comment", "password": creator["password"]},
+    )
+    assert comment_resp.status_code == 201
+    comment = comment_resp.json()
+    assert comment["is_op"] is True
+
+    # Another user comments
+    other = create_user(client, "Guest")
+    second_resp = client.post(
+        f"/markets/{market['id']}/comments?user_id={other['id']}",
+        json={"text": "Hi there", "password": other["password"]},
+    )
+    assert second_resp.status_code == 201
+    second_comment = second_resp.json()
+    assert second_comment["is_op"] is False
+
+    list_resp = client.get(f"/markets/{market['id']}/comments?page=1&page_size=1")
+    assert list_resp.status_code == 200
+    listing = list_resp.json()
+    assert len(listing["items"]) == 1
+    assert listing["has_more"] is True
+
+    # Only author can delete; creator cannot delete the guest comment
+    forbidden = client.delete(
+        f"/comments/{second_comment['id']}?user_id={creator['id']}",
+        json={"password": creator["password"]},
+    )
+    assert forbidden.status_code == 403
+
+    delete_resp = client.delete(
+        f"/comments/{second_comment['id']}?user_id={other['id']}",
+        json={"password": other["password"]},
+    )
+    assert delete_resp.status_code == 204
+
+    refreshed = client.get(f"/markets/{market['id']}/comments")
+    assert refreshed.status_code == 200
+    refreshed_items = refreshed.json()["items"]
+    assert all(c["id"] != second_comment["id"] for c in refreshed_items)
+
+
 def test_reset_endpoint_clears_state(client: TestClient) -> None:
     user = create_user(client, "Temp")
     market = create_market(client, user["id"])

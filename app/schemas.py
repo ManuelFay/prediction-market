@@ -112,6 +112,27 @@ class ComplaintCreate(BaseModel):
     reason: str
 
 
+class CommentCreate(BaseModel):
+    text: str = Field(..., min_length=1, max_length=280)
+    password: str
+
+
+class CommentDeleteRequest(BaseModel):
+    password: str
+
+
+class CommentRead(BaseModel):
+    id: int
+    market_id: int
+    user_id: int
+    text: str
+    created_at: datetime
+    is_op: bool
+
+    class Config:
+        from_attributes = True
+
+
 class ResolutionRequest(BaseModel):
     outcome: str  # YES, NO, INVALID
 
@@ -154,3 +175,10 @@ class PayoutBreakdown(BaseModel):
     amount: float
     entry_type: str
     note: Optional[str]
+
+
+class CommentPage(BaseModel):
+    items: list[CommentRead]
+    page: int
+    page_size: int
+    has_more: bool
