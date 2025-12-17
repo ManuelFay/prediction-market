@@ -62,7 +62,9 @@ ADMIN_PASSWORD = "admin"
 
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR / "frontend"
-app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+FRONTEND_DIST_DIR = FRONTEND_DIR / "dist"
+if FRONTEND_DIST_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST_DIR / "assets"), name="assets")
 
 
 @app.on_event("startup")
@@ -113,9 +115,9 @@ def comment_read(comment: Comment, market: Optional[Market] = None, session: Opt
 
 @app.get("/", response_class=HTMLResponse)
 def serve_frontend() -> HTMLResponse:
-    index_path = FRONTEND_DIR / "index.html"
+    index_path = FRONTEND_DIST_DIR / "index.html"
     if not index_path.exists():
-        raise HTTPException(status_code=500, detail="Frontend not built")
+        raise HTTPException(status_code=500, detail="Frontend not built. Run npm run build in app/frontend.")
     return HTMLResponse(index_path.read_text(encoding="utf-8"))
 
 
