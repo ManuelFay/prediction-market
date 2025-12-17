@@ -13,7 +13,6 @@ import {
   type MarketRead,
   type MarketWithBets,
   type PositionRead,
-  type UserRead
 } from './types';
 import { OddsChart } from './components/OddsChart';
 
@@ -93,7 +92,7 @@ function Button({
   children: React.ReactNode;
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
   disabled?: boolean;
-  onClick?: () => void;
+  onClick?: React.MouseEventHandler<HTMLButtonElement>;
   type?: 'button' | 'submit';
 }) {
   const base =
@@ -115,6 +114,62 @@ function Button({
     >
       {children}
     </button>
+  );
+}
+
+function Modal({
+  open,
+  title,
+  onClose,
+  children
+}: {
+  open: boolean;
+  title?: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  useEffect(() => {
+    if (!open) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onMouseDown={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="max-h-[85vh] w-full max-w-4xl overflow-auto rounded-2xl border border-slate-800 bg-slate-950 shadow-2xl"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-slate-100">{title ?? 'Details'}</div>
+            <div className="truncate text-xs text-slate-400">Click outside or press Esc to close</div>
+          </div>
+          <Button variant="secondary" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+        <div className="p-4">{children}</div>
+      </div>
+    </div>
   );
 }
 
@@ -477,7 +532,13 @@ export default function App() {
           return (
             <div
               key={m.id}
-              className="rounded-xl border border-slate-800 bg-slate-900/90 p-3 shadow-inner"
+              className="cursor-pointer rounded-xl border border-slate-800 bg-slate-900/90 p-3 shadow-inner hover:border-slate-700"
+              role="button"
+              tabIndex={0}
+              onClick={() => setSelectedMarketId((prev) => (prev === m.id ? null : m.id))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') setSelectedMarketId((prev) => (prev === m.id ? null : m.id));
+              }}
             >
               <div className="flex items-center justify-between">
                 <div>
@@ -491,10 +552,17 @@ export default function App() {
               <div className="text-sm text-slate-300">
                 YES: {formatProb(m.price_yes)} | NO: {formatProb(m.price_no)}
               </div>
-              <div className="mt-2 grid gap-2 md:grid-cols-3">
+              <div
+                className="mt-2 grid gap-2 md:grid-cols-2"
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
                 <Button
                   disabled={!authenticated || yesLocked}
-                  onClick={() => placeBetMutation.mutate({ marketId: m.id, side: 'YES' })}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    placeBetMutation.mutate({ marketId: m.id, side: 'YES' });
+                  }}
                 >
                   Bet 1€ YES
                   <span className="block text-xs opacity-80">
@@ -507,7 +575,10 @@ export default function App() {
                 </Button>
                 <Button
                   disabled={!authenticated || noLocked}
-                  onClick={() => placeBetMutation.mutate({ marketId: m.id, side: 'NO' })}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    placeBetMutation.mutate({ marketId: m.id, side: 'NO' });
+                  }}
                 >
                   Bet 1€ NO
                   <span className="block text-xs opacity-80">
@@ -517,9 +588,6 @@ export default function App() {
                       ? 'Locked below 5% YES'
                       : `Win ${m.no_preview.payout.toFixed(2)}€`}
                   </span>
-                </Button>
-                <Button variant="secondary" onClick={() => setSelectedMarketId(m.id)}>
-                  View details
                 </Button>
               </div>
             </div>
@@ -1061,13 +1129,6 @@ export default function App() {
                 </div>
               ) : null}
               <div>{renderMarketList(openMarkets)}</div>
-              <div className="mt-4">
-                {selectedMarket ? (
-                  renderMarketDetail(selectedMarket)
-                ) : (
-                  <div className="text-sm text-slate-400">Select a market to see details</div>
-                )}
-              </div>
             </Card>
           ) : null}
 
@@ -1105,7 +1166,17 @@ export default function App() {
                   markets
                     .filter((m) => m.creator_id === activeUser?.id)
                     .map((m) => (
-                      <div key={m.id} className="rounded-xl border border-slate-800 bg-slate-900 p-3">
+                      <div
+                        key={m.id}
+                        className="cursor-pointer rounded-xl border border-slate-800 bg-slate-900 p-3 hover:border-slate-700"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedMarketId((prev) => (prev === m.id ? null : m.id))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ')
+                            setSelectedMarketId((prev) => (prev === m.id ? null : m.id));
+                        }}
+                      >
                         <div className="flex items-center justify-between">
                           <div>
                             <div className="font-semibold">{m.question}</div>
@@ -1116,29 +1187,42 @@ export default function App() {
                         <div className="text-sm text-slate-300">
                           YES: {formatProb(m.price_yes)} | NO: {formatProb(m.price_no)}
                         </div>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          <Button variant="secondary" onClick={() => setSelectedMarketId(m.id)}>
-                            View
-                          </Button>
+                        <div
+                          className="mt-2 flex flex-wrap gap-2"
+                          onClick={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => e.stopPropagation()}
+                        >
                           {['RESOLVED', 'INVALID'].includes(m.status) ? (
                             <span className="text-sm text-slate-400">Resolution complete</span>
                           ) : (
                             <>
                               <Button
                                 variant="secondary"
-                                onClick={() => resolveMarketMutation.mutate({ marketId: m.id, outcome: 'YES' })}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  resolveMarketMutation.mutate({ marketId: m.id, outcome: 'YES' });
+                                }}
                               >
                                 Resolve YES
                               </Button>
                               <Button
                                 variant="secondary"
-                                onClick={() => resolveMarketMutation.mutate({ marketId: m.id, outcome: 'NO' })}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  resolveMarketMutation.mutate({ marketId: m.id, outcome: 'NO' });
+                                }}
                               >
                                 Resolve NO
                               </Button>
                             </>
                           )}
-                          <Button variant="danger" onClick={() => deleteMarketMutation.mutate(m.id)}>
+                          <Button
+                            variant="danger"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteMarketMutation.mutate(m.id);
+                            }}
+                          >
                             Delete & clear
                           </Button>
                         </div>
@@ -1152,6 +1236,24 @@ export default function App() {
           ) : null}
         </section>
       </main>
+
+      <Modal
+        open={selectedMarketId !== null}
+        title={selectedMarket?.question ?? 'Market details'}
+        onClose={() => setSelectedMarketId(null)}
+      >
+        {marketDetailQuery.isLoading ? (
+          <div className="text-sm text-slate-400">Loading…</div>
+        ) : marketDetailQuery.isError ? (
+          <div className="rounded-lg border border-rose-700 bg-rose-950/40 p-3 text-sm text-rose-200">
+            {(marketDetailQuery.error as Error)?.message ?? 'Could not load market'}
+          </div>
+        ) : selectedMarket ? (
+          renderMarketDetail(selectedMarket)
+        ) : (
+          <div className="text-sm text-slate-400">No market selected</div>
+        )}
+      </Modal>
     </div>
   );
 }
