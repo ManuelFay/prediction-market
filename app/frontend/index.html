@@ -187,6 +187,28 @@
         border: 1px solid #1f2937;
         border-radius: 10px;
       }
+      .comments {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .comment-row {
+        border: 1px solid #1f2937;
+        border-radius: 10px;
+        padding: 10px;
+        background: #0b1221;
+      }
+      .comment-row .meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: #94a3b8;
+      }
+      .comment-row .body {
+        margin-top: 6px;
+        font-size: 14px;
+      }
       .list-row {
         border-bottom: 1px solid #1f2937;
         padding: 8px 10px;
@@ -470,6 +492,8 @@
       let users = [];
       let markets = [];
       let selectedMarket = null;
+      let commentsState = {};
+      const COMMENTS_PAGE_SIZE = 20;
       const loadActiveUserFromStorage = () => {
         const sessionId = Number(sessionStorage.getItem('activeUserId') || '') || null;
         const sessionName = sessionStorage.getItem('activeUserName') || '';
@@ -869,6 +893,87 @@
         await selectMarket(marketId, false);
       }
 
+      function getCommentState(marketId) {
+        if (!commentsState[marketId]) {
+          commentsState[marketId] = { items: [], page: 0, hasMore: true, loading: false };
+        }
+        return commentsState[marketId];
+      }
+
+      async function loadComments(marketId, page = 1, append = false) {
+        const state = getCommentState(marketId);
+        commentsState[marketId] = { ...state, loading: true };
+        renderMarketDetail(selectedMarket);
+        let response;
+        try {
+          response = await fetchJSON(`/markets/${marketId}/comments?page=${page}&page_size=${COMMENTS_PAGE_SIZE}`);
+        } catch (err) {
+          commentsState[marketId] = { ...state, loading: false };
+          alert(err.message || 'Could not load comments');
+          renderMarketDetail(selectedMarket);
+          return;
+        }
+        const merged = append ? [...(state.items || []), ...response.items] : response.items;
+        commentsState[marketId] = {
+          items: merged,
+          page: response.page,
+          hasMore: response.has_more,
+          loading: false,
+        };
+        if (selectedMarket && selectedMarket.id === marketId) {
+          renderMarketDetail(selectedMarket);
+        }
+      }
+
+      async function loadMoreComments(marketId) {
+        const state = getCommentState(marketId);
+        const nextPage = state.page + 1;
+        await loadComments(marketId, nextPage, true);
+      }
+
+      async function submitComment(marketId) {
+        const userId = getActiveUserId();
+        if (!userId) return alert('Log in to comment.');
+        const password = getUserPassword(userId);
+        if (!password) return alert('Enter the account password to comment.');
+        const input = document.getElementById(`comment-input-${marketId}`);
+        const text = (input?.value || '').trim();
+        if (!text) return alert('Comment cannot be empty.');
+        try {
+          await fetchJSON(`/markets/${marketId}/comments?user_id=${userId}`, {
+            method: 'POST',
+            body: JSON.stringify({ text, password }),
+          });
+        } catch (err) {
+          alert(err.message || 'Could not post comment');
+          return;
+        }
+        if (input) input.value = '';
+        await loadComments(marketId);
+      }
+
+      async function deleteComment(commentId, marketId) {
+        const userId = getActiveUserId();
+        if (!userId) return alert('Log in to delete comments.');
+        const password = getUserPassword(userId);
+        if (!password) return alert('Enter the account password to delete comments.');
+        try {
+          await fetchJSON(`/comments/${commentId}?user_id=${userId}`, {
+            method: 'DELETE',
+            body: JSON.stringify({ password }),
+          });
+        } catch (err) {
+          alert(err.message || 'Could not delete comment');
+          return;
+        }
+        const state = getCommentState(marketId);
+        commentsState[marketId] = {
+          ...state,
+          items: (state.items || []).filter((c) => c.id !== commentId),
+        };
+        renderMarketDetail(selectedMarket);
+      }
+
       async function ensureOddsInSync(marketId) {
         const latest = await fetchJSON(`/markets/${marketId}`);
         const displayed = markets.find((m) => m.id === marketId) || selectedMarket;
@@ -1092,6 +1197,26 @@
           .join('');
       }
 
+      function renderCommentRow(comment, marketId) {
+        const activeUserId = getActiveUserId();
+        const canDelete = activeUserId && Number(activeUserId) === comment.user_id;
+        const badges = [
+          comment.is_op ? '<span class="pill success">OP</span>' : '',
+          `<span class="pill">User ${comment.user_id}</span>`,
+        ].filter(Boolean);
+        return `
+          <div class="comment-row">
+            <div class="meta">
+              <strong>${userName(comment.user_id)}</strong>
+              ${badges.join('')}
+              <span>${new Date(comment.created_at).toLocaleString()}</span>
+              ${canDelete ? `<button class="secondary danger" onclick="deleteComment(${comment.id}, ${marketId})">Delete</button>` : ''}
+            </div>
+            <div class="body">${comment.text}</div>
+          </div>
+        `;
+      }
+
       function renderPayouts(payouts = [], outcome) {
         if (!payouts.length) return '<div class="muted">No payouts yet</div>';
         return payouts
@@ -1104,6 +1229,41 @@
             `,
           )
           .join('');
+      }
+
+      function renderCommentsSection(market) {
+        const state = getCommentState(market.id);
+        const activeUserId = getActiveUserId();
+        const authenticated = isUserAuthenticated(activeUserId);
+        const loadingLabel = state.loading ? '<span class="small">Loading…</span>' : `<span class="small">${state.items.length} shown</span>`;
+        const listContent =
+          state.loading && !state.items.length
+            ? '<div class="muted">Loading comments…</div>'
+            : state.items.length
+            ? state.items.map((c) => renderCommentRow(c, market.id)).join('')
+            : '<div class="muted">No comments yet.</div>';
+        const moreButton = state.hasMore
+          ? `<button class="secondary" onclick="loadMoreComments(${market.id})" ${state.loading ? 'disabled' : ''}>Load more</button>`
+          : '';
+        const form = authenticated
+          ? `
+              <label for="comment-input-${market.id}">Add a comment</label>
+              <textarea id="comment-input-${market.id}" maxlength="280" placeholder="Share a quick note (max 280 chars)"></textarea>
+              <button onclick="submitComment(${market.id})">Post comment</button>
+            `
+          : '<div class="muted">Log in to add a comment.</div>';
+
+        return `
+          <div class="panel">
+            <div class="flex-between">
+              <h4>Comments</h4>
+              ${loadingLabel}
+            </div>
+            <div class="comments" id="comments-${market.id}">${listContent}</div>
+            ${moreButton}
+            ${form}
+          </div>
+        `;
       }
 
       function formatProbability(p) {
@@ -1165,7 +1325,9 @@
           return;
         }
         selectedMarket = await fetchJSON(`/markets/${id}`);
+        commentsState[id] = { ...(commentsState[id] || { items: [], page: 0, hasMore: true }), loading: true };
         renderMarketDetail(selectedMarket);
+        await loadComments(id);
       }
 
       function renderMarketDetail(market) {
@@ -1255,6 +1417,7 @@
               ${adminControls}
             </div>
             <div class="ledger-list">${renderMarketLedger(market)}</div>
+            ${renderCommentsSection(market)}
           </div>
         `;
       }
